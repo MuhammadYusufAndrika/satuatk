@@ -1,0 +1,399 @@
+name: Deploy SATUATK Production
+
+on:
+  push:
+    branches:
+      - main
+
+  # Bisa deploy manual dari GitHub > Actions
+  workflow_dispatch:
+
+concurrency:
+  group: satuatk-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PHP_VERSION: '8.2'
+  NODE_VERSION: '20'
+
+  APP_DIR: /home/taud1675/public_html/satuatk.yusufandrika.dev
+  APP_URL: https://satuatk.yusufandrika.dev
+
+jobs:
+  deploy:
+    name: Build & Deploy SATUATK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+
+      # ============================================================
+      # CHECKOUT
+      # ============================================================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ============================================================
+      # VALIDATE SECRETS
+      # ============================================================
+
+      - name: Validate deployment secrets
+        shell: bash
+        run: |
+          missing=""
+
+          [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && missing="$missing SSH_PRIVATE_KEY"
+          [ -z "${{ secrets.SSH_HOST }}" ] && missing="$missing SSH_HOST"
+          [ -z "${{ secrets.SSH_USER }}" ] && missing="$missing SSH_USER"
+          [ -z "${{ secrets.SSH_PORT }}" ] && missing="$missing SSH_PORT"
+
+          if [ -n "$missing" ]; then
+            echo "::error::GitHub Secrets belum lengkap:$missing"
+            exit 1
+          fi
+
+          echo "Deployment secrets OK."
+
+
+      # ============================================================
+      # SECURITY CHECK
+      # ============================================================
+
+      - name: Check development backdoor
+        shell: bash
+        run: |
+          if grep -rn "bypass-login" routes/ app/ 2>/dev/null; then
+            echo "::error::Route bypass-login masih ditemukan."
+            echo "Hapus route development sebelum production."
+            exit 1
+          fi
+
+          echo "Security check OK."
+
+
+      # ============================================================
+      # PHP / COMPOSER
+      # ============================================================
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, pdo_mysql, bcmath, fileinfo, openssl, tokenizer, xml, ctype, curl, zip
+          coverage: none
+          tools: composer:v2
+
+
+      - name: Validate Composer
+        run: composer validate --no-check-publish
+
+
+      - name: Install Composer dependencies
+        run: |
+          composer install \
+            --no-dev \
+            --prefer-dist \
+            --optimize-autoloader \
+            --no-interaction \
+            --no-progress
+
+
+      # ============================================================
+      # NODE / VITE
+      # ============================================================
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+
+
+      - name: Build frontend
+        run: npm run build
+
+
+      - name: Verify Vite build
+        shell: bash
+        run: |
+          if [ ! -f "public/build/manifest.json" ] && \
+             [ ! -f "public/build/.vite/manifest.json" ]; then
+
+            echo "::error::Vite manifest tidak ditemukan."
+            ls -lah public || true
+            exit 1
+
+          fi
+
+          echo "Vite build OK."
+          du -sh public/build
+
+
+      # ============================================================
+      # PREPARE DEPLOYMENT
+      # ============================================================
+
+      - name: Prepare deployment package
+        shell: bash
+        run: |
+
+          # Tidak diperlukan di production
+          rm -rf \
+            .git \
+            .github \
+            node_modules \
+            tests
+
+          rm -f \
+            public/hot \
+            composer.phar \
+            npm-debug.log \
+            yarn-error.log
+
+          # Jangan kirim runtime data lokal
+          rm -rf storage/logs/*
+          rm -rf storage/framework/cache/*
+          rm -rf storage/framework/sessions/*
+          rm -rf storage/framework/views/*
+
+          # Deployment information
+          {
+            echo "commit=${GITHUB_SHA}"
+            echo "branch=${GITHUB_REF_NAME}"
+            echo "actor=${GITHUB_ACTOR}"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > .deployment-info
+
+          echo "Deployment package:"
+          du -sh vendor || true
+          du -sh public/build || true
+
+
+      # ============================================================
+      # DEPLOY VIA SSH / RSYNC
+      # ============================================================
+
+      - name: Deploy to cPanel
+        uses: easingthemes/ssh-deploy@main
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+          REMOTE_HOST: ${{ secrets.SSH_HOST }}
+          REMOTE_USER: ${{ secrets.SSH_USER }}
+          REMOTE_PORT: ${{ secrets.SSH_PORT }}
+
+          SOURCE: "./"
+
+          TARGET: ${{ env.APP_DIR }}
+
+          # PENTING:
+          # .env production tidak boleh ditimpa.
+          # storage runtime juga dipertahankan.
+          EXCLUDE: >-
+            /.git/,
+            /.github/,
+            /node_modules/,
+            /tests/,
+            /.env,
+            /.env.*,
+            /.vscode/,
+            /.idea/,
+            /public/hot,
+            /public/storage,
+            /storage/logs/,
+            /storage/framework/sessions/,
+            /storage/framework/cache/,
+            /storage/framework/views/,
+            /composer.phar,
+            /*.log
+
+          ARGS: "-rlDzvO --delete"
+
+
+      # ============================================================
+      # POST DEPLOY
+      # ============================================================
+
+      - name: Run Laravel deployment tasks
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+          script: |
+
+            set -e
+
+            APP_DIR="${{ env.APP_DIR }}"
+
+            cd "$APP_DIR"
+
+            echo "======================================"
+            echo " SATUATK Production Deployment"
+            echo "======================================"
+
+            # ------------------------------------------------------
+            # PHP
+            # ------------------------------------------------------
+
+            PHP_BIN="php"
+
+            echo "PHP version:"
+            $PHP_BIN -v | head -n 1
+
+
+            # ------------------------------------------------------
+            # CHECK .ENV
+            # ------------------------------------------------------
+
+            if [ ! -f ".env" ]; then
+              echo "ERROR: .env production tidak ditemukan."
+              echo "Lokasi seharusnya:"
+              echo "$APP_DIR/.env"
+              exit 1
+            fi
+
+
+            if ! grep -q '^APP_KEY=base64:' .env; then
+              echo "ERROR: APP_KEY belum dikonfigurasi."
+              exit 1
+            fi
+
+
+            if ! grep -q '^APP_ENV=production' .env; then
+              echo "WARNING: APP_ENV bukan production."
+            fi
+
+
+            if ! grep -q '^APP_DEBUG=false' .env; then
+              echo "WARNING: APP_DEBUG belum false."
+            fi
+
+
+            # ------------------------------------------------------
+            # PERMISSIONS
+            # ------------------------------------------------------
+
+            chmod -R 775 storage bootstrap/cache || true
+
+
+            # ------------------------------------------------------
+            # CLEAR OLD CACHE
+            # ------------------------------------------------------
+
+            $PHP_BIN artisan optimize:clear || true
+
+
+            # ------------------------------------------------------
+            # DATABASE MIGRATION
+            #
+            # JANGAN migrate:fresh
+            # JANGAN --seed otomatis
+            # ------------------------------------------------------
+
+            $PHP_BIN artisan migrate --force
+
+
+            # ------------------------------------------------------
+            # PRODUCTION CACHE
+            # ------------------------------------------------------
+
+            $PHP_BIN artisan config:cache || true
+
+            $PHP_BIN artisan route:cache || true
+
+            $PHP_BIN artisan view:cache || true
+
+
+            # ------------------------------------------------------
+            # PERMISSION CACHE
+            # ------------------------------------------------------
+
+            $PHP_BIN artisan permission:cache-reset || true
+
+
+            # ------------------------------------------------------
+            # QUEUE
+            # ------------------------------------------------------
+
+            $PHP_BIN artisan queue:restart || true
+
+
+            # ------------------------------------------------------
+            # FINISH
+            # ------------------------------------------------------
+
+            echo ""
+            echo "======================================"
+            echo " DEPLOYMENT SUCCESS"
+            echo "======================================"
+
+            cat .deployment-info || true
+
+
+      # ============================================================
+      # HEALTH CHECK
+      # ============================================================
+
+      - name: Production health check
+        shell: bash
+        run: |
+
+          echo "Checking ${{ env.APP_URL }} ..."
+
+          for i in 1 2 3 4 5; do
+
+            HTTP_CODE=$(curl \
+              -k \
+              -s \
+              -o /dev/null \
+              -w "%{http_code}" \
+              --max-time 20 \
+              "${{ env.APP_URL }}/login" || true)
+
+            echo "Attempt $i -> HTTP $HTTP_CODE"
+
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Production is healthy."
+              exit 0
+            fi
+
+            sleep 10
+
+          done
+
+          echo "::error::Production health check failed."
+          exit 1
+
+
+      # ============================================================
+      # SUMMARY
+      # ============================================================
+
+      - name: Deployment summary
+        if: always()
+        shell: bash
+        run: |
+
+          {
+            echo "## SATUATK Production"
+            echo ""
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Branch: \`${GITHUB_REF_NAME}\`"
+            echo "- Actor: @${GITHUB_ACTOR}"
+            echo "- Server: \`${{ secrets.SSH_HOST }}\`"
+            echo "- Directory: \`${{ env.APP_DIR }}\`"
+            echo "- URL: ${{ env.APP_URL }}"
+            echo "- Status: **${{ job.status }}**"
+          } >> "$GITHUB_STEP_SUMMARY"
