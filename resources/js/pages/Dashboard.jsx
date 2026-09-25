@@ -95,6 +95,7 @@ function RequestStatusBadge({ status }) {
 
 // ─── Department Request Bar ────────────────────────────────────────────────
 
+
 function DepartmentRequestBar({ dept, maxValue }) {
     const pct = maxValue > 0 ? Math.round((dept.total_requests / maxValue) * 100) : 0;
     return (
