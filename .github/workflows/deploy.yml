@@ -134,6 +134,8 @@ jobs:
       - name: Create deployment archive
         shell: bash
         run: |
+          rm -f /tmp/satuatk-deploy.tar.gz
+
           tar \
             --exclude='./.env' \
             --exclude='./.env.*' \
@@ -142,10 +144,10 @@ jobs:
             --exclude='./storage/framework/sessions/*' \
             --exclude='./storage/framework/cache/*' \
             --exclude='./storage/framework/views/*' \
-            -czf satuatk-deploy.tar.gz .
+            -czf /tmp/satuatk-deploy.tar.gz .
 
           echo "Archive created:"
-          ls -lh satuatk-deploy.tar.gz
+          ls -lh /tmp/satuatk-deploy.tar.gz
 
       - name: Upload deployment archive
         uses: appleboy/scp-action@v1
