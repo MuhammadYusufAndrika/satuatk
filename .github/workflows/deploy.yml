@@ -18,6 +18,7 @@ env:
   NODE_VERSION: '20'
   APP_DIR: /home/taud1675/public_html/satuatk.yusufandrika.dev
   APP_URL: https://satuatk.yusufandrika.dev
+  TEMP_DIR: /home/taud1675/satuatk-deploy
 
 jobs:
   deploy:
@@ -113,6 +114,10 @@ jobs:
             npm-debug.log \
             yarn-error.log
 
+          # Jangan kirim .env dari repository.
+          rm -f .env .env.*
+
+          # Runtime data tidak perlu dikirim dari GitHub runner.
           rm -rf storage/logs/*
           rm -rf storage/framework/cache/*
           rm -rf storage/framework/sessions/*
@@ -125,41 +130,43 @@ jobs:
             echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > .deployment-info
 
-          echo "Deployment package:"
+          echo "Deployment package ready:"
           du -sh vendor || true
           du -sh public/build || true
 
-      # Shared hosting tidak menyediakan rsync, jadi deployment
-      # dikirim sebagai TAR.GZ melalui SCP.
-      - name: Create deployment archive
-        shell: bash
-        run: |
-          rm -f /tmp/satuatk-deploy.tar.gz
+      # Bersihkan temporary directory dari deployment sebelumnya.
+      - name: Prepare temporary directory on server
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          port: ${{ secrets.SSH_PORT }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
 
-          tar \
-            --exclude='./.env' \
-            --exclude='./.env.*' \
-            --exclude='./public/storage' \
-            --exclude='./storage/logs/*' \
-            --exclude='./storage/framework/sessions/*' \
-            --exclude='./storage/framework/cache/*' \
-            --exclude='./storage/framework/views/*' \
-            -czf /tmp/satuatk-deploy.tar.gz .
+            TEMP_DIR="${{ env.TEMP_DIR }}"
 
-          echo "Archive created:"
-          ls -lh /tmp/satuatk-deploy.tar.gz
+            rm -rf "$TEMP_DIR"
+            mkdir -p "$TEMP_DIR"
 
-      - name: Upload deployment archive
+            echo "Temporary deployment directory ready:"
+            echo "$TEMP_DIR"
+
+      # appleboy/scp-action melakukan TAR + SCP sendiri.
+      # Tidak perlu membuat .tar.gz manual.
+      - name: Upload application to server
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "satuatk-deploy.tar.gz"
-          target: "/home/${{ secrets.SSH_USER }}/"
+          source: "."
+          target: ${{ env.TEMP_DIR }}
+          overwrite: true
 
-      - name: Extract deployment on server
+      - name: Install deployment on server
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -170,17 +177,37 @@ jobs:
             set -e
 
             APP_DIR="${{ env.APP_DIR }}"
-            ARCHIVE="/home/${{ secrets.SSH_USER }}/satuatk-deploy.tar.gz"
+            TEMP_DIR="${{ env.TEMP_DIR }}"
+            ENV_BACKUP="/home/${{ secrets.SSH_USER }}/.satuatk-env-backup"
 
-            echo "Preparing deployment directory..."
-            mkdir -p "$APP_DIR"
+            echo "Preparing production deployment..."
 
-            if [ ! -f "$ARCHIVE" ]; then
-              echo "ERROR: Deployment archive tidak ditemukan: $ARCHIVE"
+            if [ ! -d "$TEMP_DIR" ]; then
+              echo "ERROR: Temporary deployment directory tidak ditemukan:"
+              echo "$TEMP_DIR"
               exit 1
             fi
 
-            # .env dan storage production dipertahankan.
+            if [ ! -f "$TEMP_DIR/artisan" ]; then
+              echo "ERROR: File artisan tidak ditemukan di temporary deployment."
+              echo "Isi temporary directory:"
+              ls -lah "$TEMP_DIR" || true
+              exit 1
+            fi
+
+            mkdir -p "$APP_DIR"
+
+            # Backup .env production sebelum mengganti source code.
+            rm -f "$ENV_BACKUP"
+
+            if [ -f "$APP_DIR/.env" ]; then
+              cp "$APP_DIR/.env" "$ENV_BACKUP"
+              echo ".env production backed up."
+            else
+              echo "WARNING: .env production belum ditemukan."
+            fi
+
+            # Pertahankan storage production.
             cd "$APP_DIR"
 
             find . \
@@ -190,20 +217,29 @@ jobs:
               ! -name 'storage' \
               -exec rm -rf -- {} +
 
-            echo "Extracting application..."
-            tar -xzf "$ARCHIVE" -C "$APP_DIR"
-            rm -f "$ARCHIVE"
+            echo "Copying new application..."
+            cp -a "$TEMP_DIR"/. "$APP_DIR"/
 
-            # Pastikan folder runtime Laravel tersedia.
+            # Pastikan .env hasil upload tidak pernah digunakan.
+            rm -f "$APP_DIR/.env"
+
+            if [ -f "$ENV_BACKUP" ]; then
+              mv "$ENV_BACKUP" "$APP_DIR/.env"
+              echo ".env production restored."
+            fi
+
+            # Pastikan runtime directories Laravel tersedia.
             mkdir -p \
-              storage/app \
-              storage/framework/cache \
-              storage/framework/sessions \
-              storage/framework/views \
-              storage/logs \
-              bootstrap/cache
+              "$APP_DIR/storage/app" \
+              "$APP_DIR/storage/framework/cache" \
+              "$APP_DIR/storage/framework/sessions" \
+              "$APP_DIR/storage/framework/views" \
+              "$APP_DIR/storage/logs" \
+              "$APP_DIR/bootstrap/cache"
 
-            echo "Deployment files extracted."
+            rm -rf "$TEMP_DIR"
+
+            echo "Application installed successfully."
 
       - name: Run Laravel deployment tasks
         uses: appleboy/ssh-action@v1
@@ -248,11 +284,11 @@ jobs:
 
             chmod -R 775 storage bootstrap/cache || true
 
-            # Beberapa command Artisan non-esensial dapat gagal pada
-            # shared hosting karena proc_open dinonaktifkan.
+            # Shared hosting menonaktifkan proc_open.
+            # Command non-esensial dibuat toleran terhadap kegagalan.
             "$PHP_BIN" artisan optimize:clear || true
 
-            # Migration production: jangan migrate:fresh / seed otomatis.
+            # Migration production. Jangan migrate:fresh / seed otomatis.
             "$PHP_BIN" artisan migrate --force
 
             "$PHP_BIN" artisan config:cache || true
