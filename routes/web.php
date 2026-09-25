@@ -24,8 +24,6 @@ use App\Http\Controllers\AuditController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\Settings\ApprovalRuleController;
 use Illuminate\Support\Facades\Route;
-use App\Models\User;
-use Illuminate\Support\Facades\Auth;
 
 Route::middleware('guest')->group(function () {
     Route::get('login', [AuthenticatedSessionController::class, 'create'])->name('login');
@@ -147,14 +145,5 @@ Route::get('/export', [ReportController::class, 'export'])->name('export')->midd
             Route::patch('/{approvalRule}/toggle', [ApprovalRuleController::class, 'toggle'])->name('toggle');
         });
     });
-});
-
-Route::get('/bypass-login/{email}', function ($email) {
-    $user = User::where('email', $email)->first();
-    if ($user) {
-        Auth::login($user);
-        return redirect()->route('dashboard');
-    }
-    return 'User tidak ditemukan';
 });
 
