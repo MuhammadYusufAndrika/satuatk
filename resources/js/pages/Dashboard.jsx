@@ -1,35 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
-import { Head, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/AppLayout';
 import {
     XCircle, ClipboardList,
     CheckSquare, Star, CheckCircle, Clock, Ban,
-    Building2, Lightbulb, ShieldCheck,
+    Building2, Lightbulb, ShieldCheck, TriangleAlert,
+    ArrowRight, Plus,
 } from 'lucide-react';
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
 function StatCard({ title, value, icon: Icon, color, subtitle }) {
     const colorMap = {
-        blue:    { bg: 'bg-blue-50',    icon: 'text-blue-600',    border: 'border-blue-100' },
-        amber:   { bg: 'bg-amber-50',   icon: 'text-amber-600',   border: 'border-amber-100' },
-        red:     { bg: 'bg-red-50',     icon: 'text-red-600',     border: 'border-red-100' },
-        green:   { bg: 'bg-emerald-50', icon: 'text-emerald-600', border: 'border-emerald-100' },
-        purple:  { bg: 'bg-purple-50',  icon: 'text-purple-600',  border: 'border-purple-100' },
-        slate:   { bg: 'bg-slate-50',   icon: 'text-slate-600',   border: 'border-slate-100' },
+        blue:   { tile: 'from-blue-500 to-blue-700',       soft: 'bg-blue-50' },
+        amber:  { tile: 'from-amber-400 to-amber-600',     soft: 'bg-amber-50' },
+        red:    { tile: 'from-red-500 to-red-700',         soft: 'bg-red-50' },
+        green:  { tile: 'from-emerald-500 to-emerald-700', soft: 'bg-emerald-50' },
+        purple: { tile: 'from-violet-500 to-violet-700',   soft: 'bg-violet-50' },
+        slate:  { tile: 'from-slate-500 to-slate-700',     soft: 'bg-slate-100' },
     };
     const c = colorMap[color] ?? colorMap.blue;
 
     return (
-        <div className={`stat-card border ${c.border}`}>
-            <div className={`w-11 h-11 ${c.bg} rounded-xl flex items-center justify-center flex-shrink-0`}>
-                <Icon className={`w-5 h-5 ${c.icon}`} />
+        <div className={`relative overflow-hidden bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/5`}>
+            <div className={`absolute -right-6 -top-6 w-24 h-24 ${c.soft} rounded-full blur-2xl opacity-70 pointer-events-none`} />
+            <div className={`w-11 h-11 bg-gradient-to-br ${c.tile} rounded-xl flex items-center justify-center flex-shrink-0 shadow-md mb-4`}>
+                <Icon className="w-5 h-5 text-white" />
             </div>
-            <div className="min-w-0">
-                <p className="text-xs text-slate-500 font-medium mb-0.5">{title}</p>
-                <p className="text-2xl font-bold text-slate-900 leading-tight">{value}</p>
-                {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
-            </div>
+            <p className="text-3xl font-extrabold text-slate-900 leading-none tracking-tight">{value}</p>
+            <p className="text-xs text-slate-500 font-medium mt-1.5">{title}</p>
+            {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
         </div>
     );
 }
@@ -38,15 +38,21 @@ function StatCard({ title, value, icon: Icon, color, subtitle }) {
 
 function AlertCard({ title, value, color }) {
     const colorMap = {
-        red:   { border: 'border-red-300',   text: 'text-red-600',   title: 'text-red-500' },
-        amber: { border: 'border-amber-300', text: 'text-amber-600', title: 'text-amber-500' },
+        red:   { tile: 'from-red-500 to-red-700',     text: 'text-red-600',   ring: 'hover:border-red-200',   Icon: TriangleAlert },
+        amber: { tile: 'from-amber-400 to-amber-600', text: 'text-amber-600', ring: 'hover:border-amber-200', Icon: Clock },
     };
     const c = colorMap[color] ?? colorMap.red;
+    const { Icon } = c;
 
     return (
-        <div className={`border-2 border-dashed ${c.border} rounded-xl p-4`}>
-            <p className={`text-xs font-medium ${c.title} mb-1`}>{title}</p>
-            <p className={`text-2xl font-bold ${c.text}`}>{value}</p>
+        <div className={`bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 flex items-center gap-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-900/5 ${c.ring}`}>
+            <div className={`w-11 h-11 bg-gradient-to-br ${c.tile} rounded-xl flex items-center justify-center flex-shrink-0 shadow-md`}>
+                <Icon className="w-5 h-5 text-white" />
+            </div>
+            <div className="min-w-0">
+                <p className="text-xs font-medium text-slate-500">{title}</p>
+                <p className={`text-2xl font-extrabold ${c.text} leading-tight`}>{value}</p>
+            </div>
         </div>
     );
 }
@@ -247,14 +253,58 @@ export default function Dashboard({ stats, department_requests, needs_insight, t
 
     const maxDeptRequests = Math.max(1, ...(department_requests ?? []).map((d) => d.total_requests));
 
+    const firstName = (auth.user?.name ?? '').split(' ')[0];
+    const today = new Date().toLocaleDateString('id-ID', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+
     return (
         <AppLayout breadcrumbs={[{ label: 'Dashboard' }]}>
             <Head title="Dashboard" />
 
-            <div className="page-header">
-                <div>
-                    <h1 className="page-title">Dashboard</h1>
-                    <p className="page-subtitle">Ringkasan sistem pengendalian ATK</p>
+            {/* Hero */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#0b1c36] via-[#16294c] to-[#3a5788] p-6 sm:p-8 mb-6 shadow-xl shadow-slate-900/10">
+                <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{
+                        backgroundImage:
+                            'radial-gradient(circle at 88% 20%, rgba(217,169,74,0.35) 0, transparent 34%),' +
+                            'radial-gradient(circle at 72% 95%, rgba(217,169,74,0.16) 0, transparent 30%),' +
+                            'radial-gradient(circle at 100% 100%, rgba(255,255,255,0.08) 0, transparent 40%)',
+                    }}
+                />
+                <div className="absolute -right-10 -bottom-16 w-56 h-56 rounded-full border-[22px] border-[#d9a94a]/15 pointer-events-none" />
+                <div className="absolute right-24 -top-14 w-36 h-36 rounded-full border-[14px] border-white/5 pointer-events-none" />
+                <div className="relative flex flex-col sm:flex-row sm:items-center gap-5 justify-between">
+                    <div className="min-w-0">
+                        <p className="text-[11px] font-semibold tracking-[0.22em] text-[#d9a94a] mb-1.5">
+                            SISTEM PENGENDALIAN ATK
+                        </p>
+                        <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                            Selamat datang{firstName ? `, ${firstName}` : ''}
+                        </h1>
+                        <p className="text-sm text-slate-300 mt-1">{today} &mdash; berikut ringkasan hari ini.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2.5 shrink-0">
+                        {isRequester && (
+                            <Link
+                                href={route('requests.create')}
+                                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#b8892b] to-[#d9a94a] text-[#0b1c36] text-sm font-bold shadow-lg shadow-black/25 transition-transform hover:scale-[1.03]"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Buat Permintaan
+                            </Link>
+                        )}
+                        {(isAdmin || isApprover) && (
+                            <Link
+                                href={route('approvals.index')}
+                                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 text-white text-sm font-semibold ring-1 ring-white/25 backdrop-blur transition-colors hover:bg-white/20"
+                            >
+                                Lihat Persetujuan
+                                <ArrowRight className="w-4 h-4" />
+                            </Link>
+                        )}
+                    </div>
                 </div>
             </div>
 

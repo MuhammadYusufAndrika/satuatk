@@ -34,7 +34,7 @@ export default function Login() {
                 </div>
 
                 <div className="mb-8">
-                    <h2 className="text-2xl font-bold text-slate-900">Masuk ke Sistemmm</h2>
+                    <h2 className="text-2xl font-bold text-slate-900">Masuk ke Sistem</h2>
                 </div>
 
                 <form onSubmit={submit} className="space-y-5">

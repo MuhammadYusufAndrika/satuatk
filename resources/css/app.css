@@ -199,3 +199,10 @@ body {
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
 .page-title { font-size: 1.25rem; font-weight: 700; color: #0f172a; }
 .page-subtitle { font-size: 0.875rem; color: #64748b; margin-top: 0.125rem; }
+
+/* ─── Dark sidebar scrollbar ─────────────────────────────────────────────────── */
+.sidebar-dark-scroll { scrollbar-width: thin; scrollbar-color: rgb(255 255 255 / .15) transparent; }
+.sidebar-dark-scroll::-webkit-scrollbar { width: 6px; }
+.sidebar-dark-scroll::-webkit-scrollbar-track { background: transparent; }
+.sidebar-dark-scroll::-webkit-scrollbar-thumb { background: rgb(255 255 255 / .15); border-radius: 3px; }
+.sidebar-dark-scroll::-webkit-scrollbar-thumb:hover { background: rgb(217 169 74 / .5); }
