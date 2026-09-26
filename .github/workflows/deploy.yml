@@ -92,8 +92,11 @@ jobs:
               --exclude='./storage/logs/*' --exclude='./storage/framework/sessions/*' \
               --exclude='./storage/framework/cache/*' --exclude='./storage/framework/views/*' \
               --exclude='./composer.phar' --exclude='./*.log' \
-              --exclude='./satuatk-deploy.tar.gz' \
-              -czf satuatk-deploy.tar.gz .
+              -czf /tmp/satuatk-deploy.tar.gz .
+          # Dipindah ke workspace SETELAH tar selesai — kalau archive
+          # ditulis langsung di dalam folder yang sedang di-tar, tar
+          # gagal dengan "file changed as we read it".
+          mv /tmp/satuatk-deploy.tar.gz ./satuatk-deploy.tar.gz
           ls -lh satuatk-deploy.tar.gz
 
       - name: Upload archive to cPanel
