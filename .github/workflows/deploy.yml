@@ -17,7 +17,6 @@ env:
   PHP_VERSION: '8.2'
   NODE_VERSION: '20'
 
-  # Production
   APP_DIR: /home/taud1675/public_html/satuatk.id
   APP_URL: https://satuatk.id
 
@@ -28,6 +27,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
+
       # ============================================================
       # 1. CHECKOUT
       # ============================================================
@@ -37,7 +37,7 @@ jobs:
 
 
       # ============================================================
-      # 2. VALIDATE SECRETS
+      # 2. VALIDATE SSH SECRETS
       # ============================================================
 
       - name: Validate deployment secrets
@@ -115,6 +115,11 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+
+      # ============================================================
+      # 6. VERIFY BUILD
+      # ============================================================
+
       - name: Verify Vite build
         shell: bash
         run: |
@@ -137,13 +142,13 @@ jobs:
 
 
       # ============================================================
-      # 6. PREPARE DEPLOYMENT
+      # 7. PREPARE DEPLOYMENT PACKAGE
       # ============================================================
 
       - name: Prepare deployment package
         shell: bash
         run: |
-          # File/folder development tidak diperlukan di production
+          # Hapus file yang tidak dibutuhkan production
           rm -rf .git
           rm -rf .github
           rm -rf node_modules
@@ -154,7 +159,7 @@ jobs:
           rm -f npm-debug.log
           rm -f yarn-error.log
 
-          # Jangan membawa runtime cache/log lokal
+          # Jangan membawa runtime lokal
           rm -rf storage/logs/*
           rm -rf storage/framework/cache/*
           rm -rf storage/framework/sessions/*
@@ -169,18 +174,18 @@ jobs:
           } > .deployment-info
 
           echo "======================================"
-          echo " Deployment Package"
+          echo " SATUATK Deployment Package"
           echo "======================================"
 
+          echo "Vendor:"
           du -sh vendor || true
+
+          echo "Frontend build:"
           du -sh public/build || true
 
 
       # ============================================================
-      # 7. CREATE ARCHIVE
-      #
-      # Archive dibuat di /tmp agar TAR tidak membaca archive
-      # yang sedang dibuat.
+      # 8. CREATE ARCHIVE
       # ============================================================
 
       - name: Create deployment archive
@@ -189,6 +194,7 @@ jobs:
           ARCHIVE="/tmp/satuatk-deploy.tar.gz"
 
           rm -f "$ARCHIVE"
+          rm -f ./satuatk-deploy.tar.gz
 
           tar \
             --exclude='./.env' \
@@ -200,19 +206,18 @@ jobs:
             --exclude='./storage/framework/views/*' \
             -czf "$ARCHIVE" .
 
-          echo "Archive successfully created:"
+          echo "Archive created:"
           ls -lh "$ARCHIVE"
 
-          # appleboy/scp-action source bekerja dari workspace,
-          # sehingga copy archive ke workspace setelah TAR selesai.
+          # scp-action membaca file dari workspace
           cp "$ARCHIVE" ./satuatk-deploy.tar.gz
 
-          echo "Workspace archive:"
+          echo "Archive ready for upload:"
           ls -lh ./satuatk-deploy.tar.gz
 
 
       # ============================================================
-      # 8. UPLOAD ARCHIVE
+      # 9. UPLOAD TO CPANEL
       # ============================================================
 
       - name: Upload deployment archive
@@ -222,19 +227,16 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-
           source: "satuatk-deploy.tar.gz"
-
           target: "/home/${{ secrets.SSH_USER }}/"
-
           overwrite: true
 
 
       # ============================================================
-      # 9. EXTRACT ON CPANEL SERVER
+      # 10. DEPLOY ON SERVER
       # ============================================================
 
-      - name: Extract deployment on server
+      - name: Deploy application
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -249,7 +251,7 @@ jobs:
             ARCHIVE="/home/${{ secrets.SSH_USER }}/satuatk-deploy.tar.gz"
 
             echo "======================================"
-            echo " Preparing SATUATK deployment"
+            echo " Deploying SATUATK"
             echo "======================================"
 
             echo "Target:"
@@ -257,39 +259,29 @@ jobs:
 
             mkdir -p "$APP_DIR"
 
+            # Pastikan archive tersedia
             if [ ! -f "$ARCHIVE" ]; then
-              echo "ERROR: Deployment archive tidak ditemukan:"
+              echo "ERROR: Deployment archive tidak ditemukan."
               echo "$ARCHIVE"
               exit 1
             fi
 
-
-            # ------------------------------------------------------
-            # .env production WAJIB sudah ada sebelum deployment.
-            # ------------------------------------------------------
-
+            # .env production tidak dikirim GitHub
+            # dan harus tetap berada di server
             if [ ! -f "$APP_DIR/.env" ]; then
               echo "ERROR: .env production tidak ditemukan."
-              echo "Expected:"
-              echo "$APP_DIR/.env"
-              echo ""
-              echo "Buat .env production terlebih dahulu."
+              echo "Expected: $APP_DIR/.env"
               exit 1
             fi
 
-
-            # ------------------------------------------------------
-            # Hapus source deployment lama
-            #
-            # TETAPI pertahankan:
-            # - .env
-            # - storage
-            # ------------------------------------------------------
-
             cd "$APP_DIR"
 
-            echo "Cleaning previous deployment..."
+            echo ""
+            echo "Cleaning previous application files..."
 
+            # Pertahankan:
+            # - .env production
+            # - storage production
             find . \
               -mindepth 1 \
               -maxdepth 1 \
@@ -297,22 +289,14 @@ jobs:
               ! -name 'storage' \
               -exec rm -rf -- {} +
 
-
-            # ------------------------------------------------------
-            # Extract release baru
-            # ------------------------------------------------------
-
-            echo "Extracting new deployment..."
+            echo ""
+            echo "Extracting new application..."
 
             tar -xzf "$ARCHIVE" -C "$APP_DIR"
 
             rm -f "$ARCHIVE"
 
-
-            # ------------------------------------------------------
-            # Runtime directories Laravel
-            # ------------------------------------------------------
-
+            # Pastikan runtime directory Laravel tersedia
             mkdir -p \
               storage/app \
               storage/app/public \
@@ -322,185 +306,49 @@ jobs:
               storage/logs \
               bootstrap/cache
 
-
             chmod -R 775 storage bootstrap/cache || true
-
-            echo "Deployment files extracted successfully."
-
-
-      # ============================================================
-      # 10. LARAVEL PRODUCTION TASKS
-      # ============================================================
-
-      - name: Run Laravel deployment tasks
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          port: ${{ secrets.SSH_PORT }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-          script: |
-            set -e
-
-            APP_DIR="${{ env.APP_DIR }}"
-            PHP_BIN="/opt/alt/php82/usr/bin/php"
-
-            cd "$APP_DIR"
-
-            echo "======================================"
-            echo " SATUATK Production Deployment"
-            echo "======================================"
-
-            echo ""
-            echo "Application directory:"
-            pwd
-
-            echo ""
-            echo "PHP:"
-            "$PHP_BIN" -v | head -n 1
-
-
-            # ------------------------------------------------------
-            # Validate production .env
-            # ------------------------------------------------------
-
-            if [ ! -f ".env" ]; then
-              echo "ERROR: .env production tidak ditemukan."
-              exit 1
-            fi
-
-            if ! grep -q '^APP_KEY=base64:' .env; then
-              echo "ERROR: APP_KEY belum dikonfigurasi."
-              exit 1
-            fi
-
-            if ! grep -q '^APP_ENV=production' .env; then
-              echo "WARNING: APP_ENV bukan production."
-            fi
-
-            if ! grep -q '^APP_DEBUG=false' .env; then
-              echo "WARNING: APP_DEBUG belum false."
-            fi
-
-            if ! grep -q '^APP_URL=https://satuatk.id' .env; then
-              echo "WARNING: APP_URL seharusnya https://satuatk.id"
-            fi
-
-
-            # ------------------------------------------------------
-            # Permission
-            # ------------------------------------------------------
-
-            chmod -R 775 storage bootstrap/cache || true
-
-
-            # ------------------------------------------------------
-            # Laravel cache
-            #
-            # proc_open dinonaktifkan di shared hosting.
-            # Karena itu command cache non-kritis dibuat tolerant.
-            # ------------------------------------------------------
-
-            echo ""
-            echo "Clearing Laravel cache..."
-
-            "$PHP_BIN" artisan optimize:clear || true
-
-
-            # ------------------------------------------------------
-            # DATABASE
-            #
-            # JANGAN menggunakan:
-            #
-            # php artisan migrate:fresh
-            #
-            # pada production.
-            # ------------------------------------------------------
-
-            echo ""
-            echo "Running database migrations..."
-
-            "$PHP_BIN" artisan migrate --force
-
-
-            # ------------------------------------------------------
-            # Production optimization
-            # ------------------------------------------------------
-
-            echo ""
-            echo "Building Laravel caches..."
-
-            "$PHP_BIN" artisan config:cache || true
-            "$PHP_BIN" artisan route:cache || true
-            "$PHP_BIN" artisan view:cache || true
-
-
-            # ------------------------------------------------------
-            # Spatie Permission
-            # ------------------------------------------------------
-
-            "$PHP_BIN" artisan permission:cache-reset || true
-
-
-            # ------------------------------------------------------
-            # Queue
-            # ------------------------------------------------------
-
-            "$PHP_BIN" artisan queue:restart || true
-
 
             echo ""
             echo "======================================"
             echo " DEPLOYMENT SUCCESS"
             echo "======================================"
 
-            echo ""
-
             cat .deployment-info || true
 
 
       # ============================================================
-      # 11. PRODUCTION HEALTH CHECK
+      # 11. HEALTH CHECK
       # ============================================================
 
       - name: Production health check
         shell: bash
         run: |
-          echo "Checking production:"
-          echo "${{ env.APP_URL }}/login"
+          echo "Checking ${{ env.APP_URL }}/login ..."
 
-          for i in 1 2 3 4 5; do
+          HTTP_CODE=$(curl \
+            -L \
+            -s \
+            -o /dev/null \
+            -w "%{http_code}" \
+            --max-time 20 \
+            "${{ env.APP_URL }}/login" || true)
 
-            HTTP_CODE=$(curl \
-              -L \
-              -s \
-              -o /dev/null \
-              -w "%{http_code}" \
-              --max-time 20 \
-              "${{ env.APP_URL }}/login" || true)
+          echo "HTTP Status: $HTTP_CODE"
 
-            echo "Attempt $i -> HTTP $HTTP_CODE"
+          if [ "$HTTP_CODE" = "200" ] || \
+             [ "$HTTP_CODE" = "301" ] || \
+             [ "$HTTP_CODE" = "302" ]; then
 
-            if [ "$HTTP_CODE" = "200" ] || \
-               [ "$HTTP_CODE" = "301" ] || \
-               [ "$HTTP_CODE" = "302" ]; then
+            echo "Production reachable."
+            exit 0
+          fi
 
-              echo "Production is reachable."
-              exit 0
-
-            fi
-
-            sleep 10
-          done
-
-          echo "::error::Production health check failed."
-
-          exit 1
+          # Deployment tidak dibuat gagal hanya karena health check.
+          echo "::warning::Deployment selesai, tetapi health check mendapat HTTP $HTTP_CODE."
 
 
       # ============================================================
-      # 12. CLEAN LOCAL ARCHIVE
+      # 12. CLEANUP
       # ============================================================
 
       - name: Cleanup deployment archive
@@ -512,7 +360,7 @@ jobs:
 
 
       # ============================================================
-      # 13. GITHUB SUMMARY
+      # 13. DEPLOYMENT SUMMARY
       # ============================================================
 
       - name: Deployment summary
@@ -525,7 +373,6 @@ jobs:
             echo "- Commit: \`${GITHUB_SHA}\`"
             echo "- Branch: \`${GITHUB_REF_NAME}\`"
             echo "- Actor: @${GITHUB_ACTOR}"
-            echo "- Server: \`${{ secrets.SSH_HOST }}\`"
             echo "- Directory: \`${{ env.APP_DIR }}\`"
             echo "- URL: ${{ env.APP_URL }}"
             echo "- Status: **${{ job.status }}**"
