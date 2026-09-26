@@ -2,8 +2,7 @@ name: Deploy SATUATK Production
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -16,7 +15,6 @@ permissions:
 env:
   PHP_VERSION: '8.2'
   NODE_VERSION: '20'
-
   APP_DIR: /home/taud1675/public_html/satuatk.id
   APP_URL: https://satuatk.id
 
@@ -27,56 +25,27 @@ jobs:
     timeout-minutes: 20
 
     steps:
-
-      # ============================================================
-      # 1. CHECKOUT
-      # ============================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # ============================================================
-      # 2. VALIDATE SSH SECRETS
-      # ============================================================
-
       - name: Validate deployment secrets
-        shell: bash
         run: |
           missing=""
-
           [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ] && missing="$missing SSH_PRIVATE_KEY"
           [ -z "${{ secrets.SSH_HOST }}" ] && missing="$missing SSH_HOST"
           [ -z "${{ secrets.SSH_USER }}" ] && missing="$missing SSH_USER"
           [ -z "${{ secrets.SSH_PORT }}" ] && missing="$missing SSH_PORT"
-
           if [ -n "$missing" ]; then
-            echo "::error::GitHub Secrets belum lengkap:$missing"
+            echo "::error::Secrets belum lengkap:$missing (isi di Settings > Secrets and variables > Actions)"
             exit 1
           fi
 
-          echo "Deployment secrets OK."
-
-
-      # ============================================================
-      # 3. SECURITY CHECK
-      # ============================================================
-
-      - name: Check development backdoor
-        shell: bash
+      - name: Block dev backdoor route
         run: |
           if grep -rn "bypass-login" routes/ app/ 2>/dev/null; then
-            echo "::error::Route bypass-login masih ditemukan."
-            echo "Hapus route development sebelum production."
+            echo "::error::Route bypass-login masih ada — hapus dari routes/web.php dulu."
             exit 1
           fi
-
-          echo "Security check OK."
-
-
-      # ============================================================
-      # 4. PHP + COMPOSER
-      # ============================================================
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -86,22 +55,10 @@ jobs:
           coverage: none
           tools: composer:v2
 
-      - name: Validate Composer
-        run: composer validate --no-check-publish
-
-      - name: Install Composer dependencies
+      - name: Install PHP dependencies
         run: |
-          composer install \
-            --no-dev \
-            --prefer-dist \
-            --optimize-autoloader \
-            --no-interaction \
-            --no-progress
-
-
-      # ============================================================
-      # 5. NODE + VITE BUILD
-      # ============================================================
+          composer validate --no-check-publish
+          composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction --no-progress
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -109,270 +66,97 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install frontend dependencies
-        run: npm ci --no-audit --no-fund
-
       - name: Build frontend
-        run: npm run build
-
-
-      # ============================================================
-      # 6. VERIFY BUILD
-      # ============================================================
-
-      - name: Verify Vite build
-        shell: bash
         run: |
-          if [ ! -f "public/build/manifest.json" ] && \
-             [ ! -f "public/build/.vite/manifest.json" ]; then
-
-            echo "::error::Vite manifest tidak ditemukan."
-
-            echo "Isi public:"
-            ls -lah public || true
-
-            echo "Isi public/build:"
-            ls -lah public/build || true
-
+          npm ci --no-audit --no-fund
+          npm run build
+          test -f public/build/manifest.json -o -f public/build/.vite/manifest.json || {
+            echo "::error::Manifest Vite tidak ditemukan — build gagal."
             exit 1
-          fi
+          }
 
-          echo "Vite build OK."
-          du -sh public/build
-
-
-      # ============================================================
-      # 7. PREPARE DEPLOYMENT PACKAGE
-      # ============================================================
-
-      - name: Prepare deployment package
-        shell: bash
+      # Satu file tar.gz: vendor/ + public/build/ ikut (shared hosting
+      # biasanya tidak bisa composer install / npm build), .env + isi
+      # storage tidak ikut. Lebih cepat dari rsync ribuan file kecil.
+      - name: Create deployment archive
         run: |
-          # Hapus file yang tidak dibutuhkan production
-          rm -rf .git
-          rm -rf .github
-          rm -rf node_modules
-          rm -rf tests
-
-          rm -f public/hot
-          rm -f composer.phar
-          rm -f npm-debug.log
-          rm -f yarn-error.log
-
-          # Jangan membawa runtime lokal
-          rm -rf storage/logs/*
-          rm -rf storage/framework/cache/*
-          rm -rf storage/framework/sessions/*
-          rm -rf storage/framework/views/*
-
-          # Informasi deployment
           {
             echo "commit=${GITHUB_SHA}"
             echo "branch=${GITHUB_REF_NAME}"
             echo "actor=${GITHUB_ACTOR}"
             echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           } > .deployment-info
+          tar --exclude='./.git' --exclude='./.github' --exclude='./node_modules' \
+              --exclude='./tests' --exclude='./.env' --exclude='./.env.*' \
+              --exclude='./public/hot' --exclude='./public/storage' \
+              --exclude='./storage/logs/*' --exclude='./storage/framework/sessions/*' \
+              --exclude='./storage/framework/cache/*' --exclude='./storage/framework/views/*' \
+              --exclude='./composer.phar' --exclude='./*.log' \
+              --exclude='./satuatk-deploy.tar.gz' \
+              -czf satuatk-deploy.tar.gz .
+          ls -lh satuatk-deploy.tar.gz
 
-          echo "======================================"
-          echo " SATUATK Deployment Package"
-          echo "======================================"
-
-          echo "Vendor:"
-          du -sh vendor || true
-
-          echo "Frontend build:"
-          du -sh public/build || true
-
-
-      # ============================================================
-      # 8. CREATE ARCHIVE
-      # ============================================================
-
-      - name: Create deployment archive
-        shell: bash
-        run: |
-          ARCHIVE="/tmp/satuatk-deploy.tar.gz"
-
-          rm -f "$ARCHIVE"
-          rm -f ./satuatk-deploy.tar.gz
-
-          tar \
-            --exclude='./.env' \
-            --exclude='./.env.*' \
-            --exclude='./public/storage' \
-            --exclude='./storage/logs/*' \
-            --exclude='./storage/framework/sessions/*' \
-            --exclude='./storage/framework/cache/*' \
-            --exclude='./storage/framework/views/*' \
-            -czf "$ARCHIVE" .
-
-          echo "Archive created:"
-          ls -lh "$ARCHIVE"
-
-          # scp-action membaca file dari workspace
-          cp "$ARCHIVE" ./satuatk-deploy.tar.gz
-
-          echo "Archive ready for upload:"
-          ls -lh ./satuatk-deploy.tar.gz
-
-
-      # ============================================================
-      # 9. UPLOAD TO CPANEL
-      # ============================================================
-
-      - name: Upload deployment archive
+      - name: Upload archive to cPanel
         uses: appleboy/scp-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "satuatk-deploy.tar.gz"
-          target: "/home/${{ secrets.SSH_USER }}/"
+          source: satuatk-deploy.tar.gz
+          target: /home/${{ secrets.SSH_USER }}/
           overwrite: true
 
-
-      # ============================================================
-      # 10. DEPLOY ON SERVER
-      # ============================================================
-
-      - name: Deploy application
+      - name: Deploy on server
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           port: ${{ secrets.SSH_PORT }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-
           script: |
             set -e
-
             APP_DIR="${{ env.APP_DIR }}"
             ARCHIVE="/home/${{ secrets.SSH_USER }}/satuatk-deploy.tar.gz"
+            [ -f "$ARCHIVE" ] || { echo "ERROR: archive tidak ditemukan."; exit 1; }
+            [ -f "$APP_DIR/.env" ] || { echo "ERROR: $APP_DIR/.env belum ada — buat manual sekali di server."; exit 1; }
 
-            echo "======================================"
-            echo " Deploying SATUATK"
-            echo "======================================"
+            # Binary PHP 8.2 lokasinya beda-beda tiap hosting.
+            if [ -x /opt/cpanel/ea-php82/root/usr/bin/php ]; then PHP_BIN=/opt/cpanel/ea-php82/root/usr/bin/php;
+            elif [ -x /usr/local/bin/php ]; then PHP_BIN=/usr/local/bin/php;
+            else PHP_BIN=php; fi
 
-            echo "Target:"
-            echo "$APP_DIR"
+            mkdir -p "$APP_DIR" && cd "$APP_DIR"
+            $PHP_BIN artisan down --retry=60 || true
 
-            mkdir -p "$APP_DIR"
+            # Bersihkan kode lama, pertahankan .env + storage production.
+            find . -mindepth 1 -maxdepth 1 ! -name '.env' ! -name 'storage' -exec rm -rf -- {} +
+            tar -xzf "$ARCHIVE" && rm -f "$ARCHIVE"
+            mkdir -p storage/app/public storage/framework/cache storage/framework/sessions \
+                     storage/framework/views storage/logs bootstrap/cache
 
-            # Pastikan archive tersedia
-            if [ ! -f "$ARCHIVE" ]; then
-              echo "ERROR: Deployment archive tidak ditemukan."
-              echo "$ARCHIVE"
-              exit 1
-            fi
-
-            # .env production tidak dikirim GitHub
-            # dan harus tetap berada di server
-            if [ ! -f "$APP_DIR/.env" ]; then
-              echo "ERROR: .env production tidak ditemukan."
-              echo "Expected: $APP_DIR/.env"
-              exit 1
-            fi
-
-            cd "$APP_DIR"
-
-            echo ""
-            echo "Cleaning previous application files..."
-
-            # Pertahankan:
-            # - .env production
-            # - storage production
-            find . \
-              -mindepth 1 \
-              -maxdepth 1 \
-              ! -name '.env' \
-              ! -name 'storage' \
-              -exec rm -rf -- {} +
-
-            echo ""
-            echo "Extracting new application..."
-
-            tar -xzf "$ARCHIVE" -C "$APP_DIR"
-
-            rm -f "$ARCHIVE"
-
-            # Pastikan runtime directory Laravel tersedia
-            mkdir -p \
-              storage/app \
-              storage/app/public \
-              storage/framework/cache \
-              storage/framework/sessions \
-              storage/framework/views \
-              storage/logs \
-              bootstrap/cache
-
+            $PHP_BIN artisan migrate --force
+            $PHP_BIN artisan config:cache
+            $PHP_BIN artisan route:cache
+            $PHP_BIN artisan view:cache
+            $PHP_BIN artisan storage:link || true
             chmod -R 775 storage bootstrap/cache || true
+            $PHP_BIN artisan up || true
+            cat .deployment-info
 
-            echo ""
-            echo "======================================"
-            echo " DEPLOYMENT SUCCESS"
-            echo "======================================"
-
-            cat .deployment-info || true
-
-
-      # ============================================================
-      # 11. HEALTH CHECK
-      # ============================================================
-
-      - name: Production health check
-        shell: bash
+      - name: Health check
         run: |
-          echo "Checking ${{ env.APP_URL }}/login ..."
-
-          HTTP_CODE=$(curl \
-            -L \
-            -s \
-            -o /dev/null \
-            -w "%{http_code}" \
-            --max-time 20 \
-            "${{ env.APP_URL }}/login" || true)
-
-          echo "HTTP Status: $HTTP_CODE"
-
-          if [ "$HTTP_CODE" = "200" ] || \
-             [ "$HTTP_CODE" = "301" ] || \
-             [ "$HTTP_CODE" = "302" ]; then
-
-            echo "Production reachable."
-            exit 0
-          fi
-
-          # Deployment tidak dibuat gagal hanya karena health check.
-          echo "::warning::Deployment selesai, tetapi health check mendapat HTTP $HTTP_CODE."
-
-
-      # ============================================================
-      # 12. CLEANUP
-      # ============================================================
-
-      - name: Cleanup deployment archive
-        if: always()
-        shell: bash
-        run: |
-          rm -f ./satuatk-deploy.tar.gz
-          rm -f /tmp/satuatk-deploy.tar.gz
-
-
-      # ============================================================
-      # 13. DEPLOYMENT SUMMARY
-      # ============================================================
+          code=$(curl -Ls -o /dev/null -w '%{http_code}' --max-time 20 "${{ env.APP_URL }}/login" || echo 000)
+          echo "HTTP $code"
+          [ "$code" = "200" ] || echo "::warning::Deploy selesai tapi /login mengembalikan HTTP $code."
 
       - name: Deployment summary
         if: always()
-        shell: bash
         run: |
           {
             echo "## SATUATK Production"
             echo ""
-            echo "- Commit: \`${GITHUB_SHA}\`"
-            echo "- Branch: \`${GITHUB_REF_NAME}\`"
-            echo "- Actor: @${GITHUB_ACTOR}"
+            echo "- Commit: \`${GITHUB_SHA}\` (@${GITHUB_ACTOR})"
             echo "- Directory: \`${{ env.APP_DIR }}\`"
             echo "- URL: ${{ env.APP_URL }}"
             echo "- Status: **${{ job.status }}**"
