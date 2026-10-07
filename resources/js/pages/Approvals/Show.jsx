@@ -1,7 +1,7 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/AppLayout';
-import UrgentBadge from '@/components/UrgentBadge';
+import UrgentBadge from '@/Components/UrgentBadge';
 import {
     CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft,
     MessageSquare, User, Timer, Package, FileText
