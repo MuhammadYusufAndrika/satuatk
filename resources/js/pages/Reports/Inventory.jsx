@@ -116,7 +116,7 @@ export default function ReportsInventory({ items, filters }) {
             {items?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {items.from}â€“{items.to} dari {items.total} barang
+                        Menampilkan {items.from}–{items.to} dari {items.total} barang
                     </p>
                     <div className="flex gap-1">
                         {items.links.map((link, i) => (

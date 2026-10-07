@@ -1,6 +1,7 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/AppLayout';
+import UrgentBadge from '@/components/UrgentBadge';
 import {
     CheckCircle2, XCircle, Clock, AlertTriangle, ChevronLeft,
     MessageSquare, User, Timer, Package, FileText
@@ -131,8 +132,10 @@ function ActionModal({ approval, type, onClose }) {
 
     const submit = (e) => {
         e.preventDefault();
+        // Tutup modal setelah request selesai (sukses maupun ditolak server),
+        // supaya flash error dari server tetap terlihat di halaman.
         post(route(`approvals.${type}`, approval.uuid), {
-            onSuccess: onClose,
+            onFinish: onClose,
         });
     };
 
@@ -219,17 +222,25 @@ function CommentForm({ approval }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function ApprovalShow({ approval, chain }) {
+export default function ApprovalShow({ approval, chain, canAct: serverCanAct }) {
     const { auth } = usePage().props;
     const roles = auth.user?.roles ?? [];
     const approvalLevel = auth.user?.approval_level ?? 0;
     const isApprover = roles.includes('SM') || roles.includes('GM');
-    const canAct = approval.status === 'pending'
-        && isApprover
-        && (approvalLevel >= 2 || approvalLevel === approval.required_level);
 
     const [modal, setModal] = useState(null); // 'approve' | 'reject' | null
-    const req  = approval.request;
+    const req = approval.request;
+
+    // Permintaan yang sudah dibatalkan pemohon tidak boleh diproses lagi.
+    const isCancelled = req?.status === 'cancelled';
+
+    // `serverCanAct` dari controller adalah sumber utama. `!== false` supaya
+    // halaman tetap jalan kalau prop-nya belum dikirim (fallback ke logika lama).
+    const canAct = serverCanAct !== false
+        && !isCancelled
+        && approval.status === 'pending'
+        && isApprover
+        && (approvalLevel >= 2 || approvalLevel === approval.required_level);
 
     return (
         <AppLayout breadcrumbs={[
@@ -244,21 +255,35 @@ export default function ApprovalShow({ approval, chain }) {
                     <Link href={route('approvals.index')} className="text-xs text-slate-400 hover:text-slate-600 flex items-center gap-1 mb-1">
                         <ChevronLeft className="w-3 h-3" /> Kembali ke daftar
                     </Link>
-                    <h1 className="page-title">{req?.request_number}</h1>
+                    <h1 className="page-title flex items-center gap-2">
+                        {req?.request_number}
+                        <UrgentBadge category={req?.category} />
+                    </h1>
                     <p className="page-subtitle">{req?.title}</p>
                 </div>
 
                 {canAct && (
                     <div className="flex gap-3">
                         <button onClick={() => setModal('reject')} className="btn btn-danger">
-    <XCircle className="w-4 h-4" /> Tolak
-</button>
-<button onClick={() => setModal('approve')} className="btn btn-success">
-    <CheckCircle2 className="w-4 h-4" /> Setujui Level {approval.level}
-</button>
+                            <XCircle className="w-4 h-4" /> Tolak
+                        </button>
+                        <button onClick={() => setModal('approve')} className="btn btn-success">
+                            <CheckCircle2 className="w-4 h-4" /> Setujui Level {approval.level}
+                        </button>
                     </div>
                 )}
             </div>
+
+            {/* Banner: permintaan dibatalkan */}
+            {isCancelled && (
+                <div className="mb-5 flex items-center gap-3 p-4 rounded-xl border bg-slate-50 border-slate-200 text-slate-600">
+                    <AlertTriangle className="w-5 h-5 flex-shrink-0 text-slate-400" />
+                    <div>
+                        <p className="text-sm font-medium">Permintaan ini sudah dibatalkan oleh pemohon</p>
+                        <p className="text-xs opacity-80">Tidak bisa disetujui, ditolak, atau dikomentari lagi.</p>
+                    </div>
+                </div>
+            )}
 
             <div className="grid lg:grid-cols-3 gap-6">
                 {/* Left: Request detail */}
@@ -292,6 +317,14 @@ export default function ApprovalShow({ approval, chain }) {
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Departemen</p>
                                 <p className="font-medium text-slate-900">{req?.department?.name ?? '—'}</p>
+                            </div>
+                            <div>
+                                <p className="text-slate-400 text-xs mb-0.5">Kategori</p>
+                                <p>
+                                    {req?.category === 'urgent'
+                                        ? <UrgentBadge category="urgent" />
+                                        : <span className="badge badge-slate">Reguler</span>}
+                                </p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Tanggal Pengajuan</p>
@@ -366,7 +399,7 @@ export default function ApprovalShow({ approval, chain }) {
                             {approval.logs?.length === 0 && (
                                 <p className="text-slate-300 text-sm text-center py-4">Belum ada komentar.</p>
                             )}
-                            <CommentForm approval={approval} />
+                            {!isCancelled && <CommentForm approval={approval} />}
                         </div>
                     </div>
                 </div>
@@ -383,7 +416,7 @@ export default function ApprovalShow({ approval, chain }) {
             </div>
 
             {/* Modals */}
-            {modal && (
+            {modal && canAct && (
                 <ActionModal
                     approval={approval}
                     type={modal}

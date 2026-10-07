@@ -110,7 +110,7 @@ export default function ReportsDistribution({ distribution, departments, filters
             {distribution?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {distribution.from}â€“{distribution.to} dari {distribution.total} data
+                        Menampilkan {distribution.from}–{distribution.to} dari {distribution.total} data
                     </p>
                     <div className="flex gap-1">
                         {distribution.links.map((link, i) => (

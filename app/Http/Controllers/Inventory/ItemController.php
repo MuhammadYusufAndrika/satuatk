@@ -138,6 +138,7 @@ class ItemController extends Controller
             'price'       => ['nullable', 'numeric', 'min:0'],
             'min_stock'   => ['nullable', 'integer', 'min:0'],
             'max_stock'   => ['nullable', 'integer', 'min:0'],
+            'max_request' => ['nullable', 'integer', 'min:1'],
             'barcode'     => ['nullable', 'string', 'max:100'],
             'is_active'   => ['boolean'],
         ]);

@@ -13,9 +13,10 @@ class SettingsController extends Controller
     {
         return Inertia::render('Settings/Index', [
             'settings' => [
-                'app_name'    => Setting::get('app_name', 'general', config('app.name')),
-                'timezone'    => Setting::get('timezone', 'general', config('app.timezone')),
-                'locale'      => Setting::get('locale', 'general', config('app.locale')),
+                'app_name'              => Setting::get('app_name', 'general', config('app.name')),
+                'timezone'              => Setting::get('timezone', 'general', config('app.timezone')),
+                'locale'                => Setting::get('locale', 'general', config('app.locale')),
+                'duplicate_window_days' => Setting::get('duplicate_window_days', 'general', 7),
             ],
         ]);
     }
@@ -23,9 +24,10 @@ class SettingsController extends Controller
     public function update(Request $request)
     {
         $data = $request->validate([
-            'app_name' => ['nullable', 'string', 'max:100'],
-            'timezone' => ['nullable', 'string', 'max:50'],
-            'locale'   => ['nullable', 'string', 'max:10'],
+            'app_name'              => ['nullable', 'string', 'max:100'],
+            'timezone'              => ['nullable', 'string', 'max:50'],
+            'locale'                => ['nullable', 'string', 'max:10'],
+            'duplicate_window_days' => ['nullable', 'integer', 'min:1', 'max:30'],
         ]);
 
         foreach (array_filter($data) as $key => $value) {

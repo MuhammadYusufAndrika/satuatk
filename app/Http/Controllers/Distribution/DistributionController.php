@@ -58,13 +58,26 @@ class DistributionController extends Controller
      */
     public function prepare(Request $request, PickupSchedule $pickup): RedirectResponse
 {
+    $pickup->loadMissing('request.requestedBy');
+    $oldStatus = $pickup->status;
+
     $pickup->update([
         'status'      => PickupSchedule::STATUS_READY,
         'prepared_by' => $request->user()->id,
         'prepared_at' => now(),
     ]);
 
-    $pickup->loadMissing('request.requestedBy');
+    // Audit Trail: picking oleh Admin Gudang.
+    activity()
+        ->performedOn($pickup)
+        ->causedBy($request->user())
+        ->event('updated')
+        ->withProperties([
+            'old'        => ['status' => $oldStatus],
+            'attributes' => ['status' => $pickup->status],
+        ])
+        ->log("Admin {$request->user()->name} menyiapkan barang (picking) {$pickup->request->request_number} ({$pickup->pickup_number})");
+
     $pickup->request->requestedBy?->notify(new PickupReadyForCollection($pickup->request, $pickup));
 
     return back()->with('success', 'Barang siap untuk diambil.');
@@ -103,10 +116,23 @@ class DistributionController extends Controller
             'proof_notes'        => $validated['proof_notes'] ?? null,
         ]);
 
+        $oldStatus = $pickup->status;
+
         $pickup->load('request.items');
         $this->fulfillmentSvc->distributeStock($pickup->request);
         $pickup->update(['status' => PickupSchedule::STATUS_PICKED_UP]);
         $pickup->request()->update(['status' => 'fulfilled', 'fulfilled_at' => now()]);
+
+        // Audit Trail: pengambilan / konfirmasi penerimaan oleh Requester.
+        activity()
+            ->performedOn($pickup)
+            ->causedBy($request->user())
+            ->event('updated')
+            ->withProperties([
+                'old'        => ['status' => $oldStatus],
+                'attributes' => ['status' => $pickup->status],
+            ])
+            ->log("Requester {$request->user()->name} mengonfirmasi penerimaan barang {$pickup->request->request_number} ({$pickup->pickup_number})");
 
         return back()->with('success', 'Penerimaan barang berhasil dikonfirmasi.');
     }

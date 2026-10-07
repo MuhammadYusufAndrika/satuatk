@@ -1,5 +1,5 @@
 import { Head, Link, router } from '@inertiajs/react';
-import AppLayout from '@/layouts/AppLayout';
+import AppLayout from '@/Layouts/AppLayout.jsx';
 
 export default function ReorderRecommendation({ reorderData, totalPerluReorder, highlightItemId }) {
     const isFiltered = Boolean(highlightItemId);

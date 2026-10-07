@@ -102,10 +102,10 @@ export default function SuppliersIndex({ suppliers, filters }) {
                                 <td><span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">{s.code}</span></td>
                                 <td className="font-medium text-slate-900">{s.name}</td>
                                 <td>
-                                    <p className="text-slate-700 text-sm">{s.contact_person ?? 'â€”'}</p>
+                                    <p className="text-slate-700 text-sm">{s.contact_person ?? '—'}</p>
                                     {s.phone && <p className="text-slate-400 text-xs">{s.phone}</p>}
                                 </td>
-                                <td className="text-slate-500">{s.city ?? 'â€”'}</td>
+                                <td className="text-slate-500">{s.city ?? '—'}</td>
                                 <td>{s.is_active !== false ? <span className="badge badge-green">Aktif</span> : <span className="badge badge-slate">Nonaktif</span>}</td>
                                 <td><div className="flex justify-end gap-1">
                                     <button onClick={() => setModal(s)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 className="w-4 h-4" /></button>

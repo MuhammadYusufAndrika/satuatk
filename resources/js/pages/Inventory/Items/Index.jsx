@@ -4,7 +4,7 @@ import AppLayout from '@/layouts/AppLayout';
 import { Plus, Search, Filter, Package, Edit2, Trash2, Eye, X, MapPin, Boxes } from 'lucide-react';
 import { cn, formatCurrency } from '@/utils';
 
-// â”€â”€â”€ Stock Badge â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Stock Badge ──────────────────────────────────────────────────────────────
 
 function StockBadge({ quantity, minStock }) {
     if (quantity === 0)      return <span className="badge badge-red">Habis</span>;
@@ -12,7 +12,7 @@ function StockBadge({ quantity, minStock }) {
     return <span className="badge badge-green">Tersedia</span>;
 }
 
-// â”€â”€â”€ Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Detail Modal ─────────────────────────────────────────────────────────────
 
 function ItemDetailModal({ item, onClose }) {
     const totalStock = item.total_stock ?? 0;
@@ -26,7 +26,7 @@ function ItemDetailModal({ item, onClose }) {
                     <div className="p-5 border-b flex items-start justify-between">
                         <div>
                             <h3 className="font-semibold text-slate-900 text-lg">{item.name}</h3>
-                            <p className="text-xs text-slate-400 font-mono mt-0.5">{item.code} {item.brand ? `Â· ${item.brand}` : ''}</p>
+                            <p className="text-xs text-slate-400 font-mono mt-0.5">{item.code} {item.brand ? `· ${item.brand}` : ''}</p>
                         </div>
                         <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
                             <X className="w-5 h-5" />
@@ -58,19 +58,19 @@ function ItemDetailModal({ item, onClose }) {
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Kategori</p>
-                                <p className="font-medium text-slate-900">{item.category?.name ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.category?.name ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Satuan</p>
-                                <p className="font-medium text-slate-900">{item.unit?.name ?? 'â€”'} <span className="text-slate-400">({item.unit?.symbol})</span></p>
+                                <p className="font-medium text-slate-900">{item.unit?.name ?? '—'} <span className="text-slate-400">({item.unit?.symbol})</span></p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Supplier</p>
-                                <p className="font-medium text-slate-900">{item.supplier?.name ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.supplier?.name ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Model / Barcode</p>
-                                <p className="font-medium text-slate-900">{item.model ?? 'â€”'}{item.barcode ? ` / ${item.barcode}` : ''}</p>
+                                <p className="font-medium text-slate-900">{item.model ?? '—'}{item.barcode ? ` / ${item.barcode}` : ''}</p>
                             </div>
                             {item.description && (
                                 <div className="col-span-2">
@@ -96,7 +96,7 @@ function ItemDetailModal({ item, onClose }) {
                                         <tbody>
                                             {item.stocks.map(st => (
                                                 <tr key={st.id}>
-                                                    <td className="font-medium text-slate-900">{st.location?.name ?? 'â€”'}</td>
+                                                    <td className="font-medium text-slate-900">{st.location?.name ?? '—'}</td>
                                                     <td className="text-center font-medium">{st.quantity}</td>
                                                     <td className="text-center text-slate-500">{st.reserved_quantity ?? 0}</td>
                                                 </tr>
@@ -115,7 +115,7 @@ function ItemDetailModal({ item, onClose }) {
     );
 }
 
-// â”€â”€â”€ Items Index Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Items Index Page ─────────────────────────────────────────────────────────
 
 export default function ItemsIndex({ items, filters, categories, units }) {
     const { auth } = usePage().props;
@@ -226,8 +226,8 @@ export default function ItemsIndex({ items, filters, categories, units }) {
                                         {item.brand && <p className="text-xs text-slate-400">{item.brand}</p>}
                                     </div>
                                 </td>
-                                <td>{item.category?.name ?? 'â€”'}</td>
-                                <td>{item.unit?.symbol ?? item.unit?.name ?? 'â€”'}</td>
+                                <td>{item.category?.name ?? '—'}</td>
+                                <td>{item.unit?.symbol ?? item.unit?.name ?? '—'}</td>
                                 <td>
                                     <span className="font-semibold">{item.total_stock ?? 0}</span>
                                 </td>
@@ -287,7 +287,7 @@ export default function ItemsIndex({ items, filters, categories, units }) {
             {items?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {items.from}â€“{items.to} dari {items.total} barang
+                        Menampilkan {items.from}–{items.to} dari {items.total} barang
                     </p>
                     <div className="flex gap-1">
                         {items.links.map((link, i) => (

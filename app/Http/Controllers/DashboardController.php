@@ -101,21 +101,9 @@ class DashboardController extends Controller
 
         $criticalStockItems = $stockByItem
             ->map(function ($item) {
-                $totalStock = $item->total_stock ?? 0;
-                $reserved   = $item->reserved_stock ?? 0;
-                $available  = $totalStock - $reserved;
-                $min        = $item->min_stock ?? 0;
-                $max        = $item->max_stock ?? ($min > 0 ? $min * 2 : 10);
-
-                if ($available <= 0) {
-                    $status = 'KRITIS';
-                } elseif ($available <= $min) {
-                    $status = 'KRITIS';
-                } elseif ($available <= $max) {
-                    $status = 'MENIPIS';
-                } else {
-                    $status = 'AMAN';
-                }
+                $available = $item->available_stock;
+                $min       = $item->min_stock ?? 0;
+                $status    = $item->stock_status;
 
                 if ($status === 'AMAN') {
                     return null;
@@ -125,7 +113,7 @@ class DashboardController extends Controller
                     'id'            => $item->id,
                     'name'          => $item->name,
                     'code'          => $item->code,
-                    'current_stock' => $totalStock,
+                    'current_stock' => $available,
                     'min_stock'     => $min,
                     'status'        => $status,
                 ];
@@ -162,13 +150,11 @@ class DashboardController extends Controller
                 'date'           => $r->created_at->format('d M Y'),
                 'request_number' => $r->request_number,
                 'department'     => $r->department?->name ?? '-',
+                'category'       => $r->category,
                 'status'         => $r->status,
             ]);
 
         // ─── Requests per Department ──────────────────────────────────────────────
-        // Disamakan scope-nya dengan kartu "Total Request" di atas: permission-scoped,
-        // all-time (tidak dibatasi bulan), dan status yang dihitung persis sama dengan
-        // formula $requestsTotal (approved + partially_approved + fulfilled + rejected + cancelled).
 
         $requestsByDepartment = ATKRequest::with('department')
             ->when(! $user->hasPermissionTo('request.view-all'), function ($q) use ($user) {
@@ -191,11 +177,9 @@ class DashboardController extends Controller
             ->values();
 
         // ─── ATK Needs Insight (based on request patterns) ─────────────────────────
-        // NB: dihitung dari pola request_items, bukan InventoryTransaction,
-        // karena InventoryTransaction belum ada proses yang mengisinya.
 
-        $insightWeeks         = 8; // jendela untuk hitung rata-rata permintaan mingguan
-        $urgentThresholdWeeks = 4; // ambang "perlu diwaspadai": proyeksi habis dalam X minggu
+        $insightWeeks         = 8;
+        $urgentThresholdWeeks = 4;
 
         $demandWindowStart = now()->subWeeks($insightWeeks);
 
@@ -225,9 +209,9 @@ class DashboardController extends Controller
                 continue;
             }
 
-            $available = ($item->total_stock ?? 0) - ($item->reserved_stock ?? 0);
+            $available = $item->available_stock;
             $min       = $item->min_stock ?? 0;
-            $max       = $item->max_stock ?? ($min > 0 ? $min * 2 : 10);
+            $max       = $item->effective_max_stock;
 
             $weeksUntilMin = ($available - $min) / $avgWeekly;
 
@@ -272,7 +256,6 @@ class DashboardController extends Controller
                 ])
                 ->whereIn('request_items.item_id', $itemIds)
                 ->where('requests.created_at', '>=', $currentPeriodStart)
-                // NB: asumsi kolom FK departemen di tabel `requests` adalah `department_id`
                 ->groupBy('requests.department_id', 'request_items.item_id')
                 ->select(
                     'requests.department_id',
@@ -307,7 +290,7 @@ class DashboardController extends Controller
                 $prevQty = $previousByDept->get($key)?->qty ?? 0;
 
                 if ($prevQty <= 0) {
-                    continue; // butuh baseline untuk hitung persentase
+                    continue;
                 }
 
                 $percent = (($row->qty - $prevQty) / $prevQty) * 100;
@@ -338,7 +321,7 @@ class DashboardController extends Controller
         $procurementSuggestions = $groupedProjection->map(function ($i) {
             $suggestedQty = max(
                 $i['max_stock'] - $i['available'],
-                round($i['avg_weekly'] * 4) // cover kebutuhan ~1 bulan ke depan
+                round($i['avg_weekly'] * 4)
             );
 
             $qty = (int) (ceil(max($suggestedQty, 0) / 10) * 10);

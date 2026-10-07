@@ -6,7 +6,9 @@ use App\Models\InventoryStock;
 use App\Models\InventoryTransaction;
 use App\Models\PickupSchedule;
 use App\Models\Requests\Request as ATKRequest;
+use App\Notifications\ApprovalCompleted;
 use App\Notifications\StockInsufficientNeedsConfirmation;
+use App\Notifications\RequestCancelled;
 use App\Notifications\RequestReadyForPickup;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,21 +35,22 @@ class FulfillmentService
             return;
         }
 
-        // Ada item kurang/kosong — tahan di sini, minta konfirmasi requester
         $request->update(['fulfillment_status' => ATKRequest::FULFILLMENT_AWAITING_CONFIRMATION]);
         $request->requestedBy?->notify(new StockInsufficientNeedsConfirmation($request, $availability));
     }
 
     /**
      * Cek stok tiap item request: quantity - reserved_quantity (lintas lokasi, dijumlah).
+     * safety_stock TIDAK ikut dikurangi di sini — itu cuma garis alarm untuk
+     * Admin Gudang, bukan jatah yang dipotong dari stok yang boleh dipakai
+     * memenuhi permintaan.
      */
     public function checkAvailability(ATKRequest $request)
     {
         return $request->items->map(function ($ri) {
             $totalStock = InventoryStock::where('item_id', $ri->item_id)->sum('quantity');
             $reserved   = InventoryStock::where('item_id', $ri->item_id)->sum('reserved_quantity');
-            $safetyStock = $ri->item->safety_stock ?? 0;
-            $available  = $totalStock - $reserved - $safetyStock;
+            $available  = $totalStock - $reserved;
 
             $status = $available >= $ri->quantity_requested
                 ? 'cukup'
@@ -81,23 +84,29 @@ class FulfillmentService
             'status'             => 'cancelled',
             'fulfillment_status' => ATKRequest::FULFILLMENT_CANCELLED_STOCK,
         ]);
+
+        $admins = User::role('Admin')->get();
+        Notification::send($admins, new RequestCancelled($request, 'Dibatalkan karena stok tidak mencukupi.'));
     }
 
     /**
      * Reservasi stok, isi quantity_approved, dan buat PickupSchedule.
      * $useRequestedQty=true artinya semua item pasti cukup (jalur normal).
      * $useRequestedQty=false artinya pakai qty sejumlah stok yang ada (partial).
+     * Kalau ternyata TIDAK ADA satu pun item yang bisa disetujui (semua
+     * stoknya 0), request ditandai 'unavailable' dan TIDAK dibuatkan
+     * PickupSchedule — tidak ada gunanya jadwal pengambilan untuk 0 barang.
      */
     private function fulfill(ATKRequest $request, bool $useRequestedQty): void
     {
         DB::transaction(function () use ($request, $useRequestedQty) {
-            $anyPartial = false;
+            $anyPartial  = false;
+            $anyApproved = false;
 
             foreach ($request->items as $ri) {
-                $totalStock  = InventoryStock::where('item_id', $ri->item_id)->sum('quantity');
-                $reserved    = InventoryStock::where('item_id', $ri->item_id)->sum('reserved_quantity');
-                $safetyStock = $ri->item->safety_stock ?? 0;
-                $available   = max(0, $totalStock - $reserved - $safetyStock);
+                $totalStock = InventoryStock::where('item_id', $ri->item_id)->sum('quantity');
+                $reserved   = InventoryStock::where('item_id', $ri->item_id)->sum('reserved_quantity');
+                $available  = max(0, $totalStock - $reserved);
 
                 $qtyToReserve = $useRequestedQty
                     ? $ri->quantity_requested
@@ -106,6 +115,9 @@ class FulfillmentService
                 if ($qtyToReserve < $ri->quantity_requested) {
                     $anyPartial = true;
                 }
+                if ($qtyToReserve > 0) {
+                    $anyApproved = true;
+                }
 
                 $this->reserveAcrossLocations($ri->item_id, $qtyToReserve, $request);
 
@@ -113,6 +125,16 @@ class FulfillmentService
                     'quantity_approved' => $qtyToReserve,
                     'status'            => $qtyToReserve > 0 ? 'approved' : 'unavailable',
                 ]);
+            }
+
+            if (! $anyApproved) {
+                $request->update([
+                    'status'             => ATKRequest::STATUS_UNAVAILABLE,
+                    'fulfillment_status' => null,
+                ]);
+
+                $request->requestedBy?->notify(new ApprovalCompleted($request, 'unavailable'));
+                return;
             }
 
             $request->update([
@@ -130,8 +152,23 @@ class FulfillmentService
                 ]
             );
 
-            // Cuma kirim notif picking sekali, pas PickupSchedule baru pertama kali dibuat
             if ($pickup->wasRecentlyCreated) {
+                // Audit Trail: pembuatan jadwal pengambilan / dokumen distribusi.
+                // auth()->user() = pengguna yang memicu proses ini (approver terakhir
+                // atau pemohon yang menyetujui pemenuhan sebagian); null jika dijalankan
+                // tanpa sesi login.
+                activity()
+                    ->performedOn($pickup)
+                    ->causedBy(auth()->user())
+                    ->event('created')
+                    ->withProperties([
+                        'attributes' => [
+                            'pickup_number' => $pickup->pickup_number,
+                            'status'        => $pickup->status,
+                        ],
+                    ])
+                    ->log("Jadwal pengambilan {$pickup->pickup_number} dibuat untuk {$request->request_number}");
+
                 $admins = User::role('Admin')->get();
                 Notification::send($admins, new PickupReadyForPreparation($request, $pickup));
             }
@@ -174,7 +211,7 @@ class FulfillmentService
                 'reference_id'     => $request->id,
                 'reference_number' => $request->request_number,
                 'quantity_before'  => $stock->quantity,
-                'quantity_change'  => 0, // stok fisik belum berubah, cuma direservasi
+                'quantity_change'  => 0,
                 'quantity_after'   => $stock->quantity,
                 'notes'            => "Reservasi {$take} unit untuk {$request->request_number}",
                 'created_by'       => $request->requested_by,

@@ -64,7 +64,7 @@ export default function RequestShow({ request, fulfillmentCheck }) {
     const showFulfillmentColumns = !['draft', 'submitted'].includes(request.status);
 const effectiveQty = (ri) => ri.quantity_fulfilled ?? ri.quantity_approved ?? ri.quantity_requested;
 const total = request.items?.reduce((sum, ri) => sum + (ri.item?.price ?? 0) * effectiveQty(ri), 0) ?? 0;
-
+const shortageItems = (fulfillmentCheck ?? []).filter((fc) => Number(fc.available) < Number(fc.requested));
     return (
         <AppLayout breadcrumbs={[
             { label: 'Permintaan ATK', href: route('requests.index') },
@@ -361,9 +361,9 @@ const total = request.items?.reduce((sum, ri) => sum + (ri.item?.price ?? 0) * e
                             Stok tidak mencukupi untuk memenuhi seluruh permintaan Anda. Anda dapat menyetujui
                             pemenuhan sebagian sesuai stok yang tersedia, atau membatalkan permintaan ini.
                         </p>
-                        {fulfillmentCheck?.length > 0 && (
+                        {shortageItems.length > 0 && (
                             <ul className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5 list-disc list-inside space-y-1 max-h-64 overflow-y-auto">
-                                {fulfillmentCheck.map((fc) => (
+                                {shortageItems.map((fc) => (
                                     <li key={fc.request_item_id}>
                                         {fc.item_name} — tersedia {fc.available} dari {fc.requested} {fc.unit} yang diminta
                                     </li>

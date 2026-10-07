@@ -60,7 +60,7 @@ export default function AdjustmentIndex({ adjustments, filters }) {
                                 onChange={e => setSearch(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && applyFilters()}
                                 className="form-input pl-9"
-                                placeholder="Cari nomor penyesuaianâ€¦"
+                                placeholder="Cari nomor penyesuaian…"
                             />
                         </div>
                     </div>
@@ -122,7 +122,7 @@ export default function AdjustmentIndex({ adjustments, filters }) {
                                         <span className="text-sm font-medium">{adj.items_count}</span>
                                         <span className="text-xs text-slate-400 ml-1">item</span>
                                     </td>
-                                    <td className="text-sm text-slate-500">{adj.creator?.name ?? 'â€”'}</td>
+                                    <td className="text-sm text-slate-500">{adj.creator?.name ?? '—'}</td>
                                     <td className="text-sm text-slate-500 whitespace-nowrap">{formatDateTime(adj.created_at)}</td>
                                     <td>
                                         <span className={cn('badge', sm.cls)}>{sm.label}</span>
@@ -146,7 +146,7 @@ export default function AdjustmentIndex({ adjustments, filters }) {
             {adjustments?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {adjustments.from}â€“{adjustments.to} dari {adjustments.total} penyesuaian
+                        Menampilkan {adjustments.from}–{adjustments.to} dari {adjustments.total} penyesuaian
                     </p>
                     <div className="flex gap-1">
                         {adjustments.links.map((link, i) => (

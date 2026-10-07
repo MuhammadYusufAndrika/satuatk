@@ -58,6 +58,7 @@ export function requestStatusBadge(status) {
         rejected:           { cls: 'badge badge-red',    label: 'Ditolak' },
         fulfilled:          { cls: 'badge badge-purple', label: 'Selesai' },
         cancelled:          { cls: 'badge badge-slate',  label: 'Dibatalkan' },
+        unavailable:        { cls: 'badge badge-red',    label: 'Tidak Dapat Dipenuhi' },
     };
     return map[status] ?? { cls: 'badge badge-slate', label: status };
 }

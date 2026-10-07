@@ -13,6 +13,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -70,7 +71,13 @@ class AdjustmentController extends Controller
 
         $user = $request->user();
 
-        DB::transaction(function () use ($validated, $user) {
+        // Preload nama barang & lokasi untuk keperluan Audit Trail.
+        $itemsById = MasterItem::whereIn('id', collect($validated['items'])->pluck('item_id'))
+            ->get()->keyBy('id');
+        $locationsById = MasterLocation::whereIn('id', collect($validated['items'])->pluck('location_id'))
+            ->get()->keyBy('id');
+
+        DB::transaction(function () use ($validated, $user, $itemsById, $locationsById) {
             $adjustment = InventoryAdjustment::create([
                 'uuid'              => Str::uuid(),
                 'adjustment_number' => $this->generateAdjustmentNumber(),
@@ -87,16 +94,32 @@ class AdjustmentController extends Controller
                 $locationId = $line['location_id'];
                 $change = $validated['type'] === 'increase' ? $line['quantity'] : -$line['quantity'];
 
-                $stock = InventoryStock::firstOrCreate(
+                $item     = $itemsById[$itemId];
+                $location = $locationsById[$locationId];
+
+                // Kunci baris stok agar dua penyesuaian bersamaan tidak saling menimpa.
+                $stock = InventoryStock::lockForUpdate()->firstOrCreate(
                     ['item_id' => $itemId, 'location_id' => $locationId],
                     ['uuid' => Str::uuid(), 'quantity' => 0, 'reserved_quantity' => 0]
                 );
 
                 $before = $stock->quantity;
-                $after = max(0, $before + $change);
+                $after = $before + $change;
 
-                if ($validated['type'] === 'decrease' && $after < 0) {
-                    abort(422, "Stok tidak mencukupi untuk item #{$itemId}.");
+                // Tolak jika stok hasil penyesuaian negatif (rollback seluruh transaksi,
+                // termasuk catatan Audit Trail).
+                if ($after < 0) {
+                    throw ValidationException::withMessages([
+                        'items' => "Stok tidak mencukupi untuk {$item->name}. Stok saat ini {$before}, pengurangan {$line['quantity']}.",
+                    ]);
+                }
+
+                // Tolak jika stok fisik turun di bawah jumlah yang sedang direservasi.
+                if ($validated['type'] === 'decrease' && $after < $stock->reserved_quantity) {
+                    $available = max(0, $before - $stock->reserved_quantity);
+                    throw ValidationException::withMessages([
+                        'items' => "Stok tersedia {$item->name} hanya {$available} (ada {$stock->reserved_quantity} unit yang sedang direservasi).",
+                    ]);
                 }
 
                 $stock->update(['quantity' => $after]);
@@ -125,6 +148,31 @@ class AdjustmentController extends Controller
                     'notes'              => $validated['reason'],
                     'created_by'         => $user->id,
                 ]);
+
+                // Audit Trail: satu catatan per barang yang disesuaikan.
+                // Pengguna (causer) dan waktu (created_at) dicatat otomatis oleh Spatie.
+                // Properti dibuat datar agar tampil benar di DetailModal (Audit/Index.jsx).
+                activity()
+                    ->performedOn($adjustment)
+                    ->causedBy($user)
+                    ->event('updated')
+                    ->withProperties([
+                        'old' => [
+                            'stok' => $before,
+                        ],
+                        'attributes' => [
+                            'no_penyesuaian' => $adjustment->adjustment_number,
+                            'barang'         => "{$item->code} - {$item->name}",
+                            'lokasi'         => $location->name,
+                            'stok'           => $after,
+                            'selisih'        => $change,
+                            'alasan'         => $validated['reason'],
+                        ],
+                    ])
+                    ->log(
+                        "Penyesuaian stok {$adjustment->adjustment_number}: {$item->name} ({$location->name}) "
+                        . "{$before} → {$after} (" . ($change > 0 ? '+' : '') . "{$change})"
+                    );
             }
         });
 

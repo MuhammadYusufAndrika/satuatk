@@ -52,9 +52,10 @@ export function SettingsTabs({ active }) {
 export default function SettingsIndex({ settings }) {
     const { flash } = usePage().props;
     const { data, setData, post, processing, errors } = useForm({
-        app_name: settings?.app_name ?? '',
-        timezone: settings?.timezone ?? 'Asia/Jakarta',
-        locale:   settings?.locale   ?? 'id',
+        app_name:               settings?.app_name ?? '',
+        timezone:               settings?.timezone ?? 'Asia/Jakarta',
+        locale:                 settings?.locale   ?? 'id',
+        duplicate_window_days:  settings?.duplicate_window_days ?? 7,
     });
 
     const submit = (e) => {
@@ -121,6 +122,22 @@ export default function SettingsIndex({ settings }) {
                             ))}
                         </select>
                         {errors.locale && <p className="form-error">{errors.locale}</p>}
+                    </div>
+
+                    <div>
+                        <label className="form-label">Jendela Deteksi Duplikat (hari kerja)</label>
+                        <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={data.duplicate_window_days}
+                            onChange={e => setData('duplicate_window_days', +e.target.value)}
+                            className={`form-input ${errors.duplicate_window_days ? 'form-input-error' : ''}`}
+                        />
+                        <p className="text-xs text-slate-400 mt-1">
+                            Sistem akan memperingatkan requester jika mereka meminta barang yang sama dalam rentang hari kerja ini.
+                        </p>
+                        {errors.duplicate_window_days && <p className="form-error">{errors.duplicate_window_days}</p>}
                     </div>
 
                     <div className="flex justify-end pt-2">

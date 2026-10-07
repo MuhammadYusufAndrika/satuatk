@@ -52,39 +52,25 @@ class ReportController extends Controller
      */
     public function inventory(Request $request): Response
     {
-        $status = $request->string('status', '')->toString(); // '', 'kritis', 'menipis'
+        $status = $request->string('status', '')->toString();
         $search = $request->string('search', '')->toString();
-$itemId = $request->input('item_id', '');
+        $itemId = $request->input('item_id', '');
         $perPage = 20;
         $page    = (int) $request->input('page', 1);
 
         $items = MasterItem::active()
             ->when($search, fn ($q) => $q->where('name', 'like', "%{$search}%"))
-->when($itemId, fn ($q) => $q->where('id', $itemId))
+            ->when($itemId, fn ($q) => $q->where('id', $itemId))
             ->withSum('stocks as total_stock', 'quantity')
             ->withSum('stocks as reserved_stock', 'reserved_quantity')
             ->get()
             ->map(function ($item) {
-                $totalStock = $item->total_stock ?? 0;
-                $reserved   = $item->reserved_stock ?? 0;
-                $available  = $totalStock - $reserved;
-                $min        = $item->min_stock ?? 0;
-                $max        = $item->max_stock ?? ($min > 0 ? $min * 2 : 10);
-
-                if ($available <= 0 || $available <= $min) {
-                    $itemStatus = 'KRITIS';
-                } elseif ($available <= $max) {
-                    $itemStatus = 'MENIPIS';
-                } else {
-                    $itemStatus = 'AMAN';
-                }
-
                 return [
                     'id'            => $item->id,
                     'name'          => $item->name,
-                    'current_stock' => $totalStock,
-                    'min_stock'     => $min,
-                    'status'        => $itemStatus,
+                    'current_stock' => $item->available_stock,
+                    'min_stock'     => $item->min_stock ?? 0,
+                    'status'        => $item->stock_status,
                 ];
             })
             ->filter(fn ($i) => $i['status'] !== 'AMAN')
@@ -173,6 +159,7 @@ $itemId = $request->input('item_id', '');
             ],
         ]);
     }
+
     /**
      * Tren pemakaian ATK per bulan.
      */
@@ -188,7 +175,7 @@ $itemId = $request->input('item_id', '');
             '09' => 'Sep', '10' => 'Okt', '11' => 'Nov', '12' => 'Des',
         ];
 
-                $trend = DB::table('request_items')
+        $trend = DB::table('request_items')
             ->join('requests', 'request_items.request_id', '=', 'requests.id')
             ->whereBetween('requests.created_at', [$from, $to])
             ->whereNull('requests.deleted_at')
@@ -224,6 +211,7 @@ $itemId = $request->input('item_id', '');
             ],
         ]);
     }
+
     /**
      * Laporan distribusi — daftar request per tanggal, unit kerja, dan status.
      */
@@ -329,7 +317,7 @@ $itemId = $request->input('item_id', '');
             'department'   => $this->exportDepartment($request),
             'distribution' => $this->exportDistribution($request),
             'recap'        => $this->exportRecap($request),
-'trend'        => $this->exportTrend($request),
+            'trend'        => $this->exportTrend($request),
             default        => $this->exportInventory($request),
         };
     }
@@ -341,21 +329,7 @@ $itemId = $request->input('item_id', '');
             ->withSum('stocks as reserved_stock', 'reserved_quantity')
             ->get()
             ->map(function ($item) {
-                $totalStock = $item->total_stock ?? 0;
-                $reserved   = $item->reserved_stock ?? 0;
-                $available  = $totalStock - $reserved;
-                $min        = $item->min_stock ?? 0;
-                $max        = $item->max_stock ?? ($min > 0 ? $min * 2 : 10);
-
-                if ($available <= 0 || $available <= $min) {
-                    $status = 'KRITIS';
-                } elseif ($available <= $max) {
-                    $status = 'MENIPIS';
-                } else {
-                    $status = 'AMAN';
-                }
-
-                return [$item->name, $totalStock, $min, $status];
+                return [$item->name, $item->available_stock, $item->min_stock ?? 0, $item->stock_status];
             })
             ->filter(fn ($row) => $row[3] !== 'AMAN')
             ->sortBy(fn ($row) => $row[3] === 'KRITIS' ? 0 : 1)
@@ -480,7 +454,8 @@ $itemId = $request->input('item_id', '');
 
         return $this->csvResponse($rows, 'laporan-rekapitulasi-status.csv');
     }
-            private function exportTrend(Request $request): HttpResponse
+
+    private function exportTrend(Request $request): HttpResponse
     {
         $from   = $request->date('from') ?? now()->subMonths(5)->startOfMonth();
         $to     = $request->date('to') ?? now()->endOfMonth();

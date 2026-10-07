@@ -27,7 +27,7 @@ function notificationBody(n) {
     return d.message ?? d.body ?? d.text ?? '';
 }
 
-// â”€â”€â”€ Filter Tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Filter Tabs ──────────────────────────────────────────────────────────────
 
 const TABS = [
     { key: 'all',     label: 'Semua' },
@@ -35,7 +35,7 @@ const TABS = [
     { key: 'read',    label: 'Sudah Dibaca' },
 ];
 
-// â”€â”€â”€ Notification Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Notification Card ────────────────────────────────────────────────────────
 
 function NotificationCard({ n }) {
     const meta = typeMeta(n.type);
@@ -73,7 +73,7 @@ function NotificationCard({ n }) {
     );
 }
 
-// â”€â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function NotificationsIndex({ notifications, filter, unread_count }) {
     const [active, setActive] = useState(filter ?? 'all');
@@ -152,7 +152,7 @@ export default function NotificationsIndex({ notifications, filter, unread_count
             {notifications?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {notifications.from}â€“{notifications.to} dari {notifications.total}
+                        Menampilkan {notifications.from}–{notifications.to} dari {notifications.total}
                     </p>
                     <div className="flex gap-1">
                         {notifications.links.map((link, i) => (

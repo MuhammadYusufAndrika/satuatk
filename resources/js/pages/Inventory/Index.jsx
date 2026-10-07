@@ -7,20 +7,20 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency, formatDate } from '@/utils';
 
-// â”€â”€â”€ Availability thresholds â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Availability thresholds ──────────────────────────────────────────────────
 function availableOf(item) {
-    return (item.total_stock ?? 0) - (item.reserved_stock ?? 0);
+    return item.available_stock ?? 0;
 }
 
 function stockMeta(item) {
-    const avail = availableOf(item);
-    const min   = item.min_stock ?? 0;
-    const max   = item.max_stock ?? (min > 0 ? min * 2 : 10);
+    const avail  = availableOf(item);
+    const safety = item.safety_stock ?? 0;
+    const min    = item.min_stock ?? 0;
 
-    if (avail <= 0)              return { key: 'out',       label: 'Habis',    cls: 'badge-slate', text: 'text-slate-500', dot: 'bg-slate-400' };
-    if (avail <= min)            return { key: 'low',       label: 'Menipis',  cls: 'badge-red',    text: 'text-red-600',   dot: 'bg-red-500' };
-    if (avail < max)            return { key: 'limited',   label: 'Terbatas', cls: 'badge-yellow', text: 'text-amber-600', dot: 'bg-amber-500' };
-    return                              { key: 'available', label: 'Tersedia', cls: 'badge-green',  text: 'text-emerald-600', dot: 'bg-emerald-500' };
+    if (avail <= 0)        return { key: 'out',       label: 'Habis',    cls: 'badge-slate', text: 'text-slate-500', dot: 'bg-slate-400' };
+    if (avail <= safety)   return { key: 'low',       label: 'Menipis',  cls: 'badge-red',    text: 'text-red-600',   dot: 'bg-red-500' };
+    if (avail <= min)      return { key: 'limited',   label: 'Terbatas', cls: 'badge-yellow', text: 'text-amber-600', dot: 'bg-amber-500' };
+    return                        { key: 'available', label: 'Tersedia', cls: 'badge-green',  text: 'text-emerald-600', dot: 'bg-emerald-500' };
 }
 
 const STOCK_FILTERS = [
@@ -38,7 +38,7 @@ const OPN_STATUS = {
     cancelled:   { cls: 'badge-red',    label: 'Dibatalkan' },
 };
 
-// â”€â”€â”€ Item Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Item Detail Modal ────────────────────────────────────────────────────────
 
 function ItemDetailModal({ item, onClose }) {
     const avail = availableOf(item);
@@ -52,7 +52,7 @@ function ItemDetailModal({ item, onClose }) {
                     <div className="p-5 border-b flex items-start justify-between">
                         <div>
                             <h3 className="font-semibold text-slate-900 text-lg">{item.name}</h3>
-                            <p className="text-xs text-slate-400 font-mono mt-0.5">{item.code} {item.brand ? `Â· ${item.brand}` : ''}</p>
+                            <p className="text-xs text-slate-400 font-mono mt-0.5">{item.code} {item.brand ? `· ${item.brand}` : ''}</p>
                         </div>
                         <button onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors">
                             <X className="w-5 h-5" />
@@ -89,19 +89,19 @@ function ItemDetailModal({ item, onClose }) {
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Kategori</p>
-                                <p className="font-medium text-slate-900">{item.category?.name ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.category?.name ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Satuan</p>
-                                <p className="font-medium text-slate-900">{item.unit?.name ?? 'â€”'} <span className="text-slate-400">({item.unit?.symbol})</span></p>
+                                <p className="font-medium text-slate-900">{item.unit?.name ?? '—'} <span className="text-slate-400">({item.unit?.symbol})</span></p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Supplier</p>
-                                <p className="font-medium text-slate-900">{item.supplier?.name ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.supplier?.name ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Model / Barcode</p>
-                                <p className="font-medium text-slate-900">{item.model ?? 'â€”'}{item.barcode ? ` / ${item.barcode}` : ''}</p>
+                                <p className="font-medium text-slate-900">{item.model ?? '—'}{item.barcode ? ` / ${item.barcode}` : ''}</p>
                             </div>
                             {item.description && (
                                 <div className="col-span-2">
@@ -127,7 +127,7 @@ function ItemDetailModal({ item, onClose }) {
                                         <tbody>
                                             {item.stocks.map(st => (
                                                 <tr key={st.id}>
-                                                    <td className="font-medium text-slate-900">{st.location?.name ?? 'â€”'}</td>
+                                                    <td className="font-medium text-slate-900">{st.location?.name ?? '—'}</td>
                                                     <td className="text-center font-medium">{st.quantity}</td>
                                                     <td className="text-center text-slate-500">{st.reserved_quantity ?? 0}</td>
                                                 </tr>
@@ -146,7 +146,7 @@ function ItemDetailModal({ item, onClose }) {
     );
 }
 
-// â”€â”€â”€ Inventory Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Inventory Page ───────────────────────────────────────────────────────────
 
 export default function InventoryIndex({ items, summary, opnames, categories, filters }) {
     const pageProps = usePage().props;
@@ -337,8 +337,8 @@ export default function InventoryIndex({ items, summary, opnames, categories, fi
                                                 <p className="font-medium text-slate-900">{item.name}</p>
                                                 {item.brand && <p className="text-xs text-slate-400">{item.brand}</p>}
                                             </td>
-                                            <td>{item.category?.name ?? 'â€”'}</td>
-                                            <td>{item.unit?.symbol ?? item.unit?.name ?? 'â€”'}</td>
+                                            <td>{item.category?.name ?? '—'}</td>
+                                            <td>{item.unit?.symbol ?? item.unit?.name ?? '—'}</td>
                                             <td className="text-center">
                                                 <span className={cn('font-semibold text-base', meta.text)}>{avail}</span>
                                             </td>
@@ -387,7 +387,7 @@ export default function InventoryIndex({ items, summary, opnames, categories, fi
                     {items?.last_page > 1 && (
                         <div className="flex items-center justify-between mt-4">
                             <p className="text-sm text-slate-500">
-                                Menampilkan {items.from}â€“{items.to} dari {items.total} barang
+                                Menampilkan {items.from}–{items.to} dari {items.total} barang
                             </p>
                             <div className="flex gap-1">
                                 {items.links.map((link, i) => (
@@ -407,7 +407,7 @@ export default function InventoryIndex({ items, summary, opnames, categories, fi
                     )}
                 </>
             ) : (
-                /* â”€â”€â”€ Stock Opname tab â”€â”€â”€ */
+                /* ─── Stock Opname tab ─── */
                 <div className="table-wrapper">
                     <table className="data-table">
                         <thead>

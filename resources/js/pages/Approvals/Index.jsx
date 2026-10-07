@@ -1,6 +1,7 @@
 ﻿import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import AppLayout from '@/layouts/AppLayout';
+import UrgentBadge from '@/components/UrgentBadge';
 import {
     CheckCircle2, XCircle, Clock, AlertTriangle, ChevronRight,
     Filter, BarChart3, Timer, Users2
@@ -54,16 +55,26 @@ function StatCard({ label, value, icon: Icon, color }) {
 // ─── Row ────────────────────────────────────────────────────────────────────
 
 function ApprovalRow({ approval }) {
-    const status  = STATUS_MAP[approval.status] ?? STATUS_MAP.pending;
+    const req = approval.request;
+
+    // Pengaman: kalau permintaan sudah dibatalkan, tampilkan sebagai Dibatalkan
+    // dan jangan beri tombol "Tinjau" (misalnya data lama di tab yang belum di-refresh).
+    const isCancelled = req?.status === 'cancelled';
+    const effectiveStatus = isCancelled ? 'cancelled' : approval.status;
+    const isActionable = effectiveStatus === 'pending';
+
+    const status  = STATUS_MAP[effectiveStatus] ?? STATUS_MAP.pending;
     const level   = LEVEL_MAP[approval.level]   ?? LEVEL_MAP[1];
     const sla     = SLA_MAP[approval.sla_status ?? 'ok'];
     const SlaIcon = sla.icon;
-    const req     = approval.request;
 
     return (
         <tr className="hover:bg-slate-50/50 transition-colors">
             <td>
-                <span className="font-mono text-xs text-slate-500">{req?.request_number}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-xs text-slate-500">{req?.request_number}</span>
+                    <UrgentBadge category={req?.category} />
+                </div>
             </td>
             <td>
                 <p className="font-medium text-slate-900 text-sm truncate max-w-48">{req?.title}</p>
@@ -78,7 +89,7 @@ function ApprovalRow({ approval }) {
                 <span className={cn('badge', status.cls)}>{status.label}</span>
             </td>
             <td>
-                {approval.due_at && approval.status === 'pending' ? (
+                {approval.due_at && isActionable ? (
                     <div className={cn('flex items-center gap-1 text-xs', sla.cls)}>
                         <SlaIcon className="w-3.5 h-3.5" />
                         {approval.sla_remaining_label}
@@ -92,12 +103,12 @@ function ApprovalRow({ approval }) {
                     href={route('approvals.show', approval.uuid)}
                     className={cn(
                         'inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors',
-                        approval.status === 'pending'
+                        isActionable
                             ? 'bg-blue-600 text-white hover:bg-blue-700'
                             : 'text-slate-500 hover:bg-slate-100'
                     )}
                 >
-                    {approval.status === 'pending' ? 'Tinjau' : 'Lihat'}
+                    {isActionable ? 'Tinjau' : 'Lihat'}
                     <ChevronRight className="w-3 h-3" />
                 </Link>
             </td>

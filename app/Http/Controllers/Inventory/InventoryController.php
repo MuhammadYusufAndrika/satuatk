@@ -16,72 +16,68 @@ class InventoryController extends Controller
      * Unified inventory page: items + stock availability + stock opname.
      */
     public function index(Request $request): Response
-{
-    $user = $request->user();
+    {
+        $user = $request->user();
 
-    $baseQuery = fn () => MasterItem::query()
-        ->withSum('stocks as total_stock', 'quantity')
-        ->withSum('stocks as reserved_stock', 'reserved_quantity')
-        ->when($request->search, fn($q, $s) => $q->where(function ($q) use ($s) {
-            $q->where('name', 'like', "%{$s}%")
-              ->orWhere('code', 'like', "%{$s}%")
-              ->orWhere('brand', 'like', "%{$s}%");
-        }))
-        ->when($request->category_id, fn($q, $c) => $q->where('category_id', $c));
+        $baseQuery = fn () => MasterItem::query()
+            ->withSum('stocks as total_stock', 'quantity')
+            ->withSum('stocks as reserved_stock', 'reserved_quantity')
+            ->when($request->search, fn($q, $s) => $q->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                  ->orWhere('code', 'like', "%{$s}%")
+                  ->orWhere('brand', 'like', "%{$s}%");
+            }))
+            ->when($request->category_id, fn($q, $c) => $q->where('category_id', $c));
 
-    $items = $baseQuery()
-        ->with(['category', 'unit', 'supplier', 'stocks.location'])
-        ->when($request->status, function ($q, $st) {
-            match ($st) {
-                'available' => $q->whereHas('stocks', fn($sq) =>
-                    $sq->whereRaw('(inventory_stocks.quantity - inventory_stocks.reserved_quantity - master_items.safety_stock) >= master_items.max_stock')
-                ),
-                'limited'   => $q->whereHas('stocks', fn($sq) =>
-                    $sq->whereRaw('(inventory_stocks.quantity - inventory_stocks.reserved_quantity - master_items.safety_stock) < master_items.max_stock')
-                      ->whereRaw('(inventory_stocks.quantity - inventory_stocks.reserved_quantity - master_items.safety_stock) > master_items.min_stock')
-                ),
-                'low'       => $q->whereHas('stocks', fn($sq) =>
-                    $sq->whereRaw('(inventory_stocks.quantity - inventory_stocks.reserved_quantity - master_items.safety_stock) <= master_items.min_stock')
-                      ->whereRaw('(inventory_stocks.quantity - inventory_stocks.reserved_quantity - master_items.safety_stock) > 0')
-                ),
-                'out'       => $q->whereDoesntHave('stocks', fn($sq) =>
-                    $sq->whereRaw('(inventory_stocks.quantity - inventory_stocks.reserved_quantity - master_items.safety_stock) > 0')
-                ),
-            };
-        })
-        ->orderBy('name')
-        ->paginate(20)
-        ->withQueryString();
+        $items = $baseQuery()
+            ->with(['category', 'unit', 'supplier', 'stocks.location'])
+            ->when($request->status, function ($q, $st) {
+                // Stok fisik saja (tanpa dikurangi safety_stock) — itu cuma garis alarm.
+                $avail  = '(COALESCE((SELECT SUM(s.quantity) FROM inventory_stocks s WHERE s.item_id = master_items.id), 0)'
+                        . ' - COALESCE((SELECT SUM(s.reserved_quantity) FROM inventory_stocks s WHERE s.item_id = master_items.id), 0))';
+                $safety = 'COALESCE(master_items.safety_stock, 0)';
+                $min    = 'COALESCE(master_items.min_stock, 0)';
 
-    $summary = ['available' => 0, 'limited' => 0, 'low' => 0, 'out' => 0];
+                match ($st) {
+                    'out'       => $q->whereRaw("$avail <= 0"),
+                    'low'       => $q->whereRaw("$avail > 0 AND $avail <= $safety"),
+                    'limited'   => $q->whereRaw("$avail > $safety AND $avail <= $min"),
+                    'available' => $q->whereRaw("$avail > $min"),
+                    default     => null,
+                };
+            })
+            ->orderBy('name')
+            ->paginate(20)
+            ->withQueryString();
 
-    $baseQuery()
-        ->get()
-        ->each(function ($item) use (&$summary) {
-            $safety = $item->safety_stock ?? 0;
-            $avail  = ($item->total_stock ?? 0) - ($item->reserved_stock ?? 0) - $safety;
-            $min    = $item->min_stock ?? 0;
-            $max    = $item->max_stock ?? ($min > 0 ? $min * 2 : 10);
+        $summary = ['available' => 0, 'limited' => 0, 'low' => 0, 'out' => 0];
 
-            if ($avail <= 0)        $summary['out']++;
-            elseif ($avail <= $min) $summary['low']++;
-            elseif ($avail < $max)  $summary['limited']++;
-            else                    $summary['available']++;
-        });
+        $baseQuery()
+            ->get()
+            ->each(function ($item) use (&$summary) {
+                $avail  = $item->available_stock;   // stok fisik, tanpa dikurangi safety_stock
+                $min    = $item->min_stock ?? 0;
+                $safety = $item->safety_stock ?? 0;
 
-    $opnames = StockOpname::with(['creator', 'location'])
-        ->withCount('items')
-        ->when($user->hasPermissionTo('inventory.opname'), function () {})
-        ->latest()
-        ->limit(10)
-        ->get();
+                if ($avail <= 0)          $summary['out']++;
+                elseif ($avail <= $safety) $summary['low']++;
+                elseif ($avail <= $min)    $summary['limited']++;
+                else                        $summary['available']++;
+            });
 
-    return Inertia::render('Inventory/Index', [
-        'items'      => $items,
-        'summary'    => $summary,
-        'opnames'    => $opnames,
-        'categories' => MasterCategory::active()->orderBy('name')->get(['id', 'name']),
-        'filters'    => $request->only('search', 'category_id', 'status'),
-    ]);
-}
+        $opnames = StockOpname::with(['creator', 'location'])
+            ->withCount('items')
+            ->when($user->hasPermissionTo('inventory.opname'), function () {})
+            ->latest()
+            ->limit(10)
+            ->get();
+
+        return Inertia::render('Inventory/Index', [
+            'items'      => $items,
+            'summary'    => $summary,
+            'opnames'    => $opnames,
+            'categories' => MasterCategory::active()->orderBy('name')->get(['id', 'name']),
+            'filters'    => $request->only('search', 'category_id', 'status'),
+        ]);
+    }
 }

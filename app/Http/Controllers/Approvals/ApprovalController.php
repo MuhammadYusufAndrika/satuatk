@@ -33,13 +33,15 @@ class ApprovalController extends Controller
                 'request.items.item',
                 'approver',
             ])
+            // Permintaan yang sudah Dibatalkan tidak boleh muncul di antrean.
+            ->whereHas('request', fn ($q) => $q->where('status', '!=', 'cancelled'))
             ->when($request->status, fn($q, $s) => $q->where('status', $s));
 
         // Admin melihat semua approval tanpa filter level.
-// SM dan GM masing-masing hanya melihat approval yang levelnya sesuai dengan level dia sendiri.
-if (! $user->hasRole('Admin')) {
-    $query->where('required_level', $user->approval_level);
-}
+        // SM dan GM masing-masing hanya melihat approval yang levelnya sesuai dengan level dia sendiri.
+        if (! $user->hasRole('Admin')) {
+            $query->where('required_level', $user->approval_level);
+        }
 
         // Filter by level
         if ($request->level) {
@@ -59,12 +61,14 @@ if (! $user->hasRole('Admin')) {
             return $a;
         });
 
+        // Statistik juga tidak menghitung permintaan yang Dibatalkan.
         $stats = [
-            'pending'  => Approval::where('status', 'pending')->count(),
-            'waiting'  => Approval::where('status', 'waiting')->count(),
-            'approved' => Approval::where('status', 'approved')->count(),
-            'rejected' => Approval::where('status', 'rejected')->count(),
-            'overdue'  => Approval::where('status', 'pending')
+            'pending'  => $this->activeApprovals()->where('status', 'pending')->count(),
+            'waiting'  => $this->activeApprovals()->where('status', 'waiting')->count(),
+            'approved' => $this->activeApprovals()->where('status', 'approved')->count(),
+            'rejected' => $this->activeApprovals()->where('status', 'rejected')->count(),
+            'overdue'  => $this->activeApprovals()
+                ->where('status', 'pending')
                 ->whereNotNull('due_at')
                 ->where('due_at', '<', now())
                 ->count(),
@@ -107,6 +111,8 @@ if (! $user->hasRole('Admin')) {
         return Inertia::render('Approvals/Show', [
             'approval' => $approval,
             'chain'    => $chain,
+            // Dipakai frontend untuk menonaktifkan tombol Setujui/Tolak.
+            'canAct'   => $approval->status === 'pending' && ! $this->isRequestCancelled($approval),
         ]);
     }
 
@@ -114,6 +120,12 @@ if (! $user->hasRole('Admin')) {
 
     public function approve(Request $request, Approval $approval): RedirectResponse
     {
+        // Tolak aksi pada permintaan yang sudah Dibatalkan (validasi sisi server).
+        if ($this->isRequestCancelled($approval)) {
+            return redirect()->route('approvals.index')
+                ->with('error', 'Permintaan ini sudah dibatalkan oleh pemohon dan tidak dapat diproses.');
+        }
+
         abort_unless($approval->status === 'pending', 422, 'Persetujuan tidak bisa diproses (status: ' . $approval->status . ').');
 
         $user = $request->user();
@@ -140,19 +152,15 @@ if (! $user->hasRole('Admin')) {
 
             // Only reserve stock once the entire chain is complete
             if ($chainComplete) {
-    // Approval chain selesai. JANGAN reservasi stok di sini —
-    // serahkan ke FulfillmentService yang akan cek ketersediaan aktual
-    // dan menentukan cukup / perlu konfirmasi partial / kosong.
-    app(\App\Services\FulfillmentService::class)->process($approval->request);
+                // Approval chain selesai. FulfillmentService::process() sudah dipanggil
+                // dari ApprovalService::advanceChain(), jadi jangan dipanggil lagi di sini.
 
-    foreach ($approval->request->items as $requestItem) {
-        $this->checkStockAlert($requestItem->item_id);
-    }
 
-    // Notify the requester that the request has been fully approved
-    $approval->request->requestedBy?->notify(new ApprovalCompleted($approval->request, 'approved'));
-}
- });
+                // Notify the requester that the request has been fully approved
+                $approval->request->requestedBy?->notify(new ApprovalCompleted($approval->request, 'approved'));
+            }
+        });
+
         $approval->refresh();
         $chainDone = Approval::where('request_id', $approval->request_id)
             ->where('status', 'waiting')->doesntExist()
@@ -169,6 +177,12 @@ if (! $user->hasRole('Admin')) {
 
     public function reject(Request $request, Approval $approval): RedirectResponse
     {
+        // Tolak aksi pada permintaan yang sudah Dibatalkan (validasi sisi server).
+        if ($this->isRequestCancelled($approval)) {
+            return redirect()->route('approvals.index')
+                ->with('error', 'Permintaan ini sudah dibatalkan oleh pemohon dan tidak dapat diproses.');
+        }
+
         abort_unless($approval->status === 'pending', 422, 'Persetujuan tidak bisa diproses (status: ' . $approval->status . ').');
 
         $user = $request->user();
@@ -204,6 +218,10 @@ if (! $user->hasRole('Admin')) {
 
     public function comment(Request $request, Approval $approval): RedirectResponse
     {
+        if ($this->isRequestCancelled($approval)) {
+            return back()->with('error', 'Permintaan ini sudah dibatalkan oleh pemohon dan tidak dapat diproses.');
+        }
+
         $validated = $request->validate([
             'notes' => ['required', 'string', 'max:1000'],
         ]);
@@ -214,6 +232,24 @@ if (! $user->hasRole('Admin')) {
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Query dasar approval yang permintaannya belum Dibatalkan.
+     */
+    private function activeApprovals()
+    {
+        return Approval::whereHas('request', fn ($q) => $q->where('status', '!=', 'cancelled'));
+    }
+
+    /**
+     * Apakah permintaan milik approval ini sudah berstatus Dibatalkan?
+     * Selalu ambil status terbaru dari database, supaya tab lama yang belum
+     * di-refresh tetap ditolak.
+     */
+    private function isRequestCancelled(Approval $approval): bool
+    {
+        return $approval->request()->value('status') === 'cancelled';
+    }
 
     /**
      * Cek apakah stok item ini sudah mendekati/di bawah batas minimum

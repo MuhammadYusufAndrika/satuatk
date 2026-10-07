@@ -21,10 +21,10 @@ class Request extends Model
     protected $table = 'requests';
 
     protected $fillable = [
-    'uuid', 'request_number', 'title', 'description', 'category', 'status',
-    'department_id', 'requested_by', 'needed_date', 'delivery_point', 'notes', 'attachment',
-    'submitted_at', 'fulfilled_at', 'fulfillment_status',
-];
+        'uuid', 'request_number', 'title', 'description', 'category', 'status',
+        'department_id', 'requested_by', 'needed_date', 'delivery_point', 'notes', 'attachment',
+        'submitted_at', 'fulfilled_at', 'fulfillment_status',
+    ];
 
     protected $casts = [
         'needed_date' => 'date',
@@ -40,16 +40,19 @@ class Request extends Model
     const STATUS_REJECTED = 'rejected';
     const STATUS_FULFILLED = 'fulfilled';
     const STATUS_CANCELLED = 'cancelled';
+    const STATUS_UNAVAILABLE = 'unavailable'; // seluruh item stoknya 0 saat fulfillment, tidak ada yang bisa diproses
 
     const CATEGORY_REGULAR = 'regular';
     const CATEGORY_URGENT = 'urgent';
     const FULFILLMENT_AWAITING_CONFIRMATION = 'awaiting_confirmation';
     const FULFILLMENT_CANCELLED_STOCK = 'cancelled_stock';
+
     protected static function boot(): void
     {
         parent::boot();
         static::creating(fn($m) => $m->uuid ??= Str::uuid()->toString());
     }
+
     public function getRouteKeyName(): string
     {
         return 'uuid';
@@ -120,6 +123,7 @@ class Request extends Model
             self::STATUS_REJECTED => 'Ditolak',
             self::STATUS_FULFILLED => 'Selesai',
             self::STATUS_CANCELLED => 'Dibatalkan',
+            self::STATUS_UNAVAILABLE => 'Tidak Dapat Dipenuhi',
             default => ucfirst($this->status),
         };
     }

@@ -48,7 +48,7 @@ export default function OpnameIndex({ opnames, filters }) {
                                 onChange={e => setSearch(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && applyFilters()}
                                 className="form-input pl-9"
-                                placeholder="Cari nomor atau judul opnameâ€¦"
+                                placeholder="Cari nomor atau judul opname…"
                             />
                         </div>
                     </div>
@@ -123,7 +123,7 @@ export default function OpnameIndex({ opnames, filters }) {
             {opnames?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {opnames.from}â€“{opnames.to} dari {opnames.total} sesi
+                        Menampilkan {opnames.from}–{opnames.to} dari {opnames.total} sesi
                     </p>
                     <div className="flex gap-1">
                         {opnames.links.map((link, i) => (

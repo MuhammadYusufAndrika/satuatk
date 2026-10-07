@@ -12,7 +12,7 @@ class ApprovalCompleted extends Notification
 
     public function __construct(
         public ATKRequest $request,
-        public string $status = 'approved', // approved | rejected
+        public string $status = 'approved', // approved | rejected | unavailable
     ) {}
 
     public function via(object $notifiable): array
@@ -22,12 +22,28 @@ class ApprovalCompleted extends Notification
 
     public function toDatabase(object $notifiable): array
     {
-        $approved = $this->status === 'approved';
+        [$title, $message] = match ($this->status) {
+            'approved' => [
+                'Permintaan Disetujui',
+                "Permintaan {$this->request->request_number} — {$this->request->title} telah disetujui seluruhnya.",
+            ],
+            'rejected' => [
+                'Permintaan Ditolak',
+                "Permintaan {$this->request->request_number} — {$this->request->title} telah ditolak.",
+            ],
+            'unavailable' => [
+                'Permintaan Tidak Dapat Dipenuhi',
+                "Permintaan {$this->request->request_number} — {$this->request->title} tidak dapat dipenuhi karena seluruh barang berstok kosong.",
+            ],
+            default => [
+                'Status Permintaan Diperbarui',
+                "Status permintaan {$this->request->request_number} diperbarui.",
+            ],
+        };
+
         return [
-            'title'   => $approved ? 'Permintaan Disetujui' : 'Permintaan Ditolak',
-            'message' => $approved
-                ? "Permintaan {$this->request->request_number} — {$this->request->title} telah disetujui seluruhnya."
-                : "Permintaan {$this->request->request_number} — {$this->request->title} telah ditolak.",
+            'title'   => $title,
+            'message' => $message,
             'request_number' => $this->request->request_number,
             'request_uuid'   => $this->request->uuid,
             'status'         => $this->status,

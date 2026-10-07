@@ -3,9 +3,9 @@ import { Link } from '@inertiajs/react';
 import AppLayout from '@/layouts/AppLayout';
 import { Save, X } from 'lucide-react';
 
-// â”€â”€â”€ Field wrapper â€” MUST stay OUTSIDE the parent component.
+// ─── Field wrapper — MUST stay OUTSIDE the parent component.
 // Defining it inside would cause React to recreate it on every render
-// â†’ inputs lose focus on each keystroke.
+// → inputs lose focus on each keystroke.
 function Field({ label, name, errors, children, required }) {
     return (
         <div>
@@ -31,6 +31,7 @@ export default function ItemForm({ item, categories, units, suppliers, isEdit = 
         price:       item?.price       ?? 0,
         min_stock:   item?.min_stock   ?? 0,
         max_stock:   item?.max_stock   ?? 0,
+        max_request: item?.max_request ?? '',
         barcode:     item?.barcode     ?? '',
         is_active:   item?.is_active   ?? true,
     });
@@ -62,7 +63,7 @@ export default function ItemForm({ item, categories, units, suppliers, isEdit = 
             </div>
 
             <form onSubmit={submit} className="max-w-3xl">
-                {/* â”€â”€â”€ Informasi Dasar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                {/* ─── Informasi Dasar ───────────────────────────────────── */}
                 <div className="card mb-5">
                     <div className="card-header">
                         <h3 className="text-sm font-semibold text-slate-900">Informasi Dasar</h3>
@@ -122,7 +123,7 @@ export default function ItemForm({ item, categories, units, suppliers, isEdit = 
                     </div>
                 </div>
 
-                {/* â”€â”€â”€ Klasifikasi & Satuan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                {/* ─── Klasifikasi & Satuan ──────────────────────────────── */}
                 <div className="card mb-5">
                     <div className="card-header">
                         <h3 className="text-sm font-semibold text-slate-900">Klasifikasi &amp; Satuan</h3>
@@ -169,7 +170,7 @@ export default function ItemForm({ item, categories, units, suppliers, isEdit = 
                     </div>
                 </div>
 
-                {/* â”€â”€â”€ Stok & Harga â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                {/* ─── Stok & Harga ──────────────────────────────────────── */}
                 <div className="card mb-5">
                     <div className="card-header">
                         <h3 className="text-sm font-semibold text-slate-900">Stok &amp; Harga</h3>
@@ -205,6 +206,17 @@ export default function ItemForm({ item, categories, units, suppliers, isEdit = 
                             />
                         </Field>
 
+                        <Field label="Maks. Permintaan per Pengajuan" name="max_request" errors={errors}>
+                            <input
+                                type="number"
+                                min="1"
+                                value={data.max_request}
+                                onChange={e => setData('max_request', e.target.value || '')}
+                                className="form-input"
+                                placeholder="Kosong = tidak dibatasi"
+                            />
+                        </Field>
+
                         <Field label="Barcode" name="barcode" errors={errors}>
                             <input
                                 type="text"
@@ -217,7 +229,7 @@ export default function ItemForm({ item, categories, units, suppliers, isEdit = 
                     </div>
                 </div>
 
-                {/* â”€â”€â”€ Status Aktif â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                {/* ─── Status Aktif ──────────────────────────────────────── */}
                 <div className="card mb-6">
                     <div className="card-body flex items-center justify-between">
                         <div>
@@ -236,7 +248,7 @@ export default function ItemForm({ item, categories, units, suppliers, isEdit = 
                     </div>
                 </div>
 
-                {/* â”€â”€â”€ Actions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+                {/* ─── Actions ───────────────────────────────────────────── */}
                 <div className="flex gap-3">
                     <button type="submit" disabled={processing} className="btn btn-primary">
                         <Save className="w-4 h-4" />

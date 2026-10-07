@@ -90,7 +90,7 @@ export default function ReportsUsage({ usage, filters }) {
             {usage?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {usage.from}â€“{usage.to} dari {usage.total} barang
+                        Menampilkan {usage.from}–{usage.to} dari {usage.total} barang
                     </p>
                     <div className="flex gap-1">
                         {usage.links.map((link, i) => (

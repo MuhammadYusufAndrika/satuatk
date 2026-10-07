@@ -16,21 +16,24 @@ class MasterItem extends Model
     use HasFactory, SoftDeletes, LogsActivity;
 
     protected $fillable = [
-    'uuid', 'code', 'name', 'brand', 'model', 'description', 'image',
-    'category_id', 'unit_id', 'supplier_id', 'price',
-    'min_stock', 'max_stock', 'safety_stock', 'min_request', 'max_request', 'stock',
-    'barcode', 'qr_code', 'is_active',
-];
-protected $casts = [
-    'is_active' => 'boolean',
-    'price' => 'decimal:2',
-    'min_stock' => 'integer',
-    'max_stock' => 'integer',
-    'safety_stock' => 'integer',
-    'min_request' => 'integer',
-    'max_request' => 'integer',
-    'stock' => 'integer',
-];
+        'uuid', 'code', 'name', 'brand', 'model', 'description', 'image',
+        'category_id', 'unit_id', 'supplier_id', 'price',
+        'min_stock', 'max_stock', 'safety_stock', 'min_request', 'max_request', 'stock',
+        'barcode', 'qr_code', 'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'price' => 'decimal:2',
+        'min_stock' => 'integer',
+        'max_stock' => 'integer',
+        'safety_stock' => 'integer',
+        'min_request' => 'integer',
+        'max_request' => 'integer',
+        'stock' => 'integer',
+    ];
+
+    protected $appends = ['available_stock', 'stock_status', 'effective_max_stock'];
 
     protected static function boot(): void
     {
@@ -73,16 +76,6 @@ protected $casts = [
         return $this->hasMany(InventoryTransaction::class, 'item_id');
     }
 
-    public function getTotalStockAttribute(): int
-    {
-        return $this->stocks()->sum('quantity');
-    }
-
-    public function getAvailableStockAttribute(): int
-    {
-        return $this->stocks()->selectRaw('SUM(quantity - reserved_quantity) as available')->value('available') ?? 0;
-    }
-
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
@@ -93,5 +86,56 @@ protected $casts = [
         return $query->whereHas('stocks', function ($q) {
             $q->whereRaw('quantity <= master_items.min_stock');
         });
+    }
+
+    /**
+     * Stok fisik yang belum dipesan siapa pun (total dikurangi reservasi).
+     * TIDAK dikurangi safety_stock — safety_stock hanya garis alarm untuk
+     * Admin Gudang, bukan jatah yang dipotong dari stok yang bisa dipakai
+     * untuk transaksi/permintaan.
+     * Butuh query dengan withSum('stocks as total_stock', 'quantity')
+     * dan withSum('stocks as reserved_stock', 'reserved_quantity').
+     */
+    public function getAvailableStockAttribute(): int
+    {
+        $total    = $this->total_stock ?? 0;
+        $reserved = $this->reserved_stock ?? 0;
+
+        return $total - $reserved;
+    }
+
+    /**
+     * Batas atas efektif (fallback ke 2x min_stock, atau 10, kalau
+     * max_stock belum diisi).
+     */
+    public function getEffectiveMaxStockAttribute(): int
+    {
+        $min = $this->min_stock ?? 0;
+
+        return $this->max_stock ?? ($min > 0 ? $min * 2 : 10);
+    }
+
+    /**
+     * Status alarm untuk Admin Gudang, berdasar posisi available_stock
+     * terhadap dua garis batas:
+     * - di/bawah safety_stock (atau benar-benar 0)  → KRITIS (segera pesan)
+     * - di/bawah min_stock (tapi masih di atas safety_stock) → MENIPIS (mulai pesan)
+     * - di atas min_stock → AMAN
+     */
+    public function getStockStatusAttribute(): string
+    {
+        $available = $this->available_stock;
+        $min       = $this->min_stock ?? 0;
+        $safety    = $this->safety_stock ?? 0;
+
+        if ($available <= 0 || $available <= $safety) {
+            return 'KRITIS';
+        }
+
+        if ($available <= $min) {
+            return 'MENIPIS';
+        }
+
+        return 'AMAN';
     }
 }

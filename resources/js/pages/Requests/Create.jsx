@@ -5,26 +5,26 @@ import { Plus, Trash2, Search, Send, Save } from 'lucide-react';
 import { formatCurrency } from '@/utils';
 
 export default function RequestCreate({ departments, items: catalogItems }) {
-    const { data, setData, post, processing, errors } = useForm({
-    title:        '',
-    description:  '',
-    category:     'regular',
-    department_id: '',
-    needed_date:  '',
-    delivery_point: '',
-    notes:        '',
-    items:        [],
-    action:       'draft', // 'draft' or 'submit'
-    force:        false,
-});
-const { flash } = usePage().props;
-const [duplicateWarning, setDuplicateWarning] = useState(null);
+    const { data, setData, post, processing, errors, setError, clearErrors } = useForm({
+        title:          '',
+        description:    '',
+        category:       'regular',
+        department_id:  '',
+        needed_date:    '',
+        delivery_point: '',
+        notes:          '',
+        items:          [],
+        action:         'draft', // 'draft' or 'submit'
+        force:          false,
+    });
+    const { flash } = usePage().props;
+    const [duplicateWarning, setDuplicateWarning] = useState(null);
 
-useEffect(() => {
-    if (flash?.duplicate_warning) {
-        setDuplicateWarning(flash.duplicate_warning);
-    }
-}, [flash]);
+    useEffect(() => {
+        if (flash?.duplicate_warning) {
+            setDuplicateWarning(flash.duplicate_warning);
+        }
+    }, [flash]);
 
     const [itemSearch, setItemSearch] = useState('');
     const [filteredItems, setFilteredItems] = useState([]);
@@ -80,14 +80,21 @@ useEffect(() => {
     }, [errors]);
 
     const submit = (action) => {
+        // Tanggal Dibutuhkan wajib saat mengajukan (draft boleh kosong)
+        if (action === 'submit' && !data.needed_date) {
+            setError('needed_date', 'Tanggal Dibutuhkan wajib diisi.');
+            return;
+        }
+        clearErrors('needed_date');
         setData('action', action);
         setTimeout(() => post(route('requests.store')), 50);
     };
-const confirmSubmitAnyway = () => {
-    setDuplicateWarning(null);
-    setData('force', true);
-    setTimeout(() => post(route('requests.store')), 50);
-};
+
+    const confirmSubmitAnyway = () => {
+        setDuplicateWarning(null);
+        setData('force', true);
+        setTimeout(() => post(route('requests.store')), 50);
+    };
 
     return (
         <AppLayout breadcrumbs={[
@@ -161,13 +168,17 @@ const confirmSubmitAnyway = () => {
                             </div>
 
                             <div>
-                                <label className="form-label">Dibutuhkan Tanggal</label>
+                                <label className="form-label">
+                                    Tanggal Dibutuhkan <span className="text-red-500">*</span>
+                                </label>
                                 <input
                                     type="date"
                                     value={data.needed_date}
+                                    min={new Date().toISOString().split('T')[0]}
                                     onChange={e => setData('needed_date', e.target.value)}
-                                    className="form-input"
+                                    className={`form-input ${errors.needed_date ? 'form-input-error' : ''}`}
                                 />
+                                {errors.needed_date && <p className="form-error">{errors.needed_date}</p>}
                             </div>
 
                             <div>
@@ -315,100 +326,100 @@ const confirmSubmitAnyway = () => {
                     </div>
 
                     {/* Actions */}
-<div className="flex gap-3 justify-end">
-    <button
-        type="button"
-        disabled={processing || data.items.length === 0}
-        onClick={() => submit('draft')}
-        className="btn btn-secondary"
-    >
-        <Save className="w-4 h-4" />
-        Simpan Draft
-    </button>
+                    <div className="flex gap-3 justify-end">
+                        <button
+                            type="button"
+                            disabled={processing || data.items.length === 0}
+                            onClick={() => submit('draft')}
+                            className="btn btn-secondary"
+                        >
+                            <Save className="w-4 h-4" />
+                            Simpan Draft
+                        </button>
 
-    <button
-        type="button"
-        disabled={processing || data.items.length === 0}
-        onClick={() => submit('submit')}
-        className="btn btn-primary"
-    >
-        <Send className="w-4 h-4" />
-        {processing ? 'Mengirim...' : 'Ajukan Permintaan'}
-    </button>
-</div>
-{duplicateWarning && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/40" onClick={() => setDuplicateWarning(null)} />
-        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="font-semibold text-slate-900 text-lg mb-2">⚠️ Mohon Diperiksa Kembali</h3>
-            <p className="text-sm text-slate-600 mb-3">
-                Kamu pernah meminta barang berikut dalam 7 hari kerja terakhir:
-            </p>
-            {duplicateWarning.duplicate_items?.length > 0 && (
-    <>
-       
-        <ul className="text-sm text-slate-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 list-disc list-inside">
-            {duplicateWarning.duplicate_items.map((name, i) => <li key={i}>{name}</li>)}
-        </ul>
-    </>
-)}
-{duplicateWarning.low_stock_items?.length > 0 && (
-    <>
-        <p className="text-sm text-slate-600 mb-2">
-            Jumlah yang diminta melebihi stok yang tersedia saat ini:
-        </p>
-        <ul className="text-sm text-slate-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 list-disc list-inside">
-            {duplicateWarning.low_stock_items.map((it, i) => (
-                <li key={i}>{it.name} — diminta {it.requested} {it.unit}, tersedia {it.available} {it.unit}</li>
-            ))}
-        </ul>
-    </>
-)}
-<p className="text-sm text-slate-600 mb-5">
-    Pastikan ini sudah sesuai kebutuhan. Tetap lanjutkan jika memang diperlukan.
-</p>
-            <div className="flex gap-3">
-                <button
-                    onClick={() => setDuplicateWarning(null)}
-                    className="btn-secondary flex-1"
-                >
-                    Batal, Cek Lagi
-                </button>
-                <button
-                    onClick={confirmSubmitAnyway}
-                    className="btn-primary flex-1"
-                >
-                    Tetap Lanjutkan
-                </button>
+                        <button
+                            type="button"
+                            disabled={processing || data.items.length === 0}
+                            onClick={() => submit('submit')}
+                            className="btn btn-primary"
+                        >
+                            <Send className="w-4 h-4" />
+                            {processing ? 'Mengirim...' : 'Ajukan Permintaan'}
+                        </button>
+                    </div>
+
+                    {duplicateWarning && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                            <div className="absolute inset-0 bg-black/40" onClick={() => setDuplicateWarning(null)} />
+                            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                                <h3 className="font-semibold text-slate-900 text-lg mb-2">⚠️ Mohon Diperiksa Kembali</h3>
+                                <p className="text-sm text-slate-600 mb-3">
+                                    Kamu pernah meminta barang berikut dalam 7 hari kerja terakhir:
+                                </p>
+                                {duplicateWarning.duplicate_items?.length > 0 && (
+                                    <>
+                                        <ul className="text-sm text-slate-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 list-disc list-inside">
+                                            {duplicateWarning.duplicate_items.map((name, i) => <li key={i}>{name}</li>)}
+                                        </ul>
+                                    </>
+                                )}
+                                {duplicateWarning.low_stock_items?.length > 0 && (
+                                    <>
+                                        <p className="text-sm text-slate-600 mb-2">
+                                            Jumlah yang diminta melebihi stok yang tersedia saat ini:
+                                        </p>
+                                        <ul className="text-sm text-slate-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 list-disc list-inside">
+                                            {duplicateWarning.low_stock_items.map((it, i) => (
+                                                <li key={i}>{it.name} — diminta {it.requested} {it.unit}, tersedia {it.available} {it.unit}</li>
+                                            ))}
+                                        </ul>
+                                    </>
+                                )}
+                                <p className="text-sm text-slate-600 mb-5">
+                                    Pastikan ini sudah sesuai kebutuhan. Tetap lanjutkan jika memang diperlukan.
+                                </p>
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setDuplicateWarning(null)}
+                                        className="btn-secondary flex-1"
+                                    >
+                                        Batal, Cek Lagi
+                                    </button>
+                                    <button
+                                        onClick={confirmSubmitAnyway}
+                                        className="btn-primary flex-1"
+                                    >
+                                        Tetap Lanjutkan
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showQtyErrorModal && quantityErrors.length > 0 && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                            <div className="absolute inset-0 bg-black/40" onClick={() => setShowQtyErrorModal(false)} />
+                            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                                <h3 className="font-semibold text-slate-900 text-lg mb-2">⚠️ Jumlah Melebihi Batas</h3>
+                                <p className="text-sm text-slate-600 mb-3">
+                                    Beberapa barang yang kamu minta melebihi batas maksimal permintaan:
+                                </p>
+                                <ul className="text-sm text-slate-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5 list-disc list-inside space-y-1">
+                                    {quantityErrors.map(([key, message]) => (
+                                        <li key={key}>{message}</li>
+                                    ))}
+                                </ul>
+                                <button
+                                    onClick={() => setShowQtyErrorModal(false)}
+                                    className="btn btn-primary w-full"
+                                >
+                                    Mengerti, Saya Perbaiki
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
-        </div>
-    </div>
-)}
-{showQtyErrorModal && quantityErrors.length > 0 && (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-black/40" onClick={() => setShowQtyErrorModal(false)} />
-        <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h3 className="font-semibold text-slate-900 text-lg mb-2">⚠️ Jumlah Melebihi Batas</h3>
-            <p className="text-sm text-slate-600 mb-3">
-                Beberapa barang yang kamu minta melebihi batas maksimal permintaan:
-            </p>
-            <ul className="text-sm text-slate-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-5 list-disc list-inside space-y-1">
-                {quantityErrors.map(([key, message]) => (
-                    <li key={key}>{message}</li>
-                ))}
-            </ul>
-            <button
-    onClick={() => setShowQtyErrorModal(false)}
-    className="btn btn-primary w-full"
->
-    Mengerti, Saya Perbaiki
-</button>
-        </div>
-    </div>
-)}
-</div>
-    </div>
-
         </AppLayout>
     );
 }

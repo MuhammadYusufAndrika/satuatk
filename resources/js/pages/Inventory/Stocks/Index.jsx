@@ -55,7 +55,7 @@ export default function StocksIndex({ stocks, filters, locations }) {
                                 onChange={e => setSearch(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && applyFilters()}
                                 className="form-input pl-9"
-                                placeholder="Cari kode atau nama barangâ€¦"
+                                placeholder="Cari kode atau nama barang…"
                             />
                         </div>
                     </div>
@@ -107,10 +107,10 @@ export default function StocksIndex({ stocks, filters, locations }) {
                                         </span>
                                     </td>
                                     <td>
-                                        <p className="font-medium text-slate-900">{stock.item?.name ?? 'â€”'}</p>
+                                        <p className="font-medium text-slate-900">{stock.item?.name ?? '—'}</p>
                                         {stock.item?.brand && <p className="text-xs text-slate-400">{stock.item.brand}</p>}
                                     </td>
-                                    <td className="text-slate-500 text-sm">{stock.location?.name ?? 'â€”'}</td>
+                                    <td className="text-slate-500 text-sm">{stock.location?.name ?? '—'}</td>
                                     <td>
                                         <span className="font-semibold">{stock.quantity}</span>
                                     </td>
@@ -142,7 +142,7 @@ export default function StocksIndex({ stocks, filters, locations }) {
             {stocks?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {stocks.from}â€“{stocks.to} dari {stocks.total} baris stok
+                        Menampilkan {stocks.from}–{stocks.to} dari {stocks.total} baris stok
                     </p>
                     <div className="flex gap-1">
                         {stocks.links.map((link, i) => (

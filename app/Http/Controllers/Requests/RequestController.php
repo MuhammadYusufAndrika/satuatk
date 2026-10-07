@@ -8,12 +8,17 @@ use App\Models\MasterDepartment;
 use App\Models\MasterItem;
 use App\Models\Requests\Request as ATKRequest;
 use App\Models\Requests\RequestItem;
+use App\Models\Setting;
+use App\Models\User;
 use App\Services\ApprovalService;
 use App\Services\FulfillmentService;
 use App\Notifications\RequestSubmitted;
+use App\Notifications\RequestCancelled;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -44,7 +49,6 @@ class RequestController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // Rename relationship key for frontend
         $requests->getCollection()->transform(function ($r) {
             $r->requested_by_user = $r->requestedBy;
             return $r;
@@ -65,10 +69,10 @@ class RequestController extends Controller
 
         return Inertia::render('Requests/Create', [
             'departments' => MasterDepartment::active()->orderBy('name')->get(['id', 'name']),
-            'items'       => MasterItem::active()
+            'items' => MasterItem::active()
                 ->with(['category', 'unit'])
                 ->withSum('stocks as total_stock', 'quantity')
-                ->selectRaw('master_items.*, (SELECT SUM(quantity - reserved_quantity) FROM inventory_stocks WHERE item_id = master_items.id) as available_stock')
+                ->withSum('stocks as reserved_stock', 'reserved_quantity')
                 ->orderBy('name')
                 ->get(),
         ]);
@@ -84,7 +88,8 @@ class RequestController extends Controller
             'description'   => ['nullable', 'string'],
             'category'      => ['required', 'in:regular,urgent'],
             'department_id' => ['required', 'exists:master_departments,id'],
-            'needed_date'   => ['nullable', 'date'],
+            // Wajib diisi hanya saat diajukan (action = submit). Draft boleh kosong.
+            'needed_date'   => ['nullable', 'required_if:action,submit', 'date', 'after_or_equal:today'],
             'delivery_point'=> ['nullable', 'string', 'max:50'],
             'notes'         => ['nullable', 'string'],
             'action'        => ['required', 'in:draft,submit'],
@@ -92,6 +97,10 @@ class RequestController extends Controller
             'items.*.item_id'            => ['required', 'exists:master_items,id'],
             'items.*.quantity_requested' => ['required', 'integer', 'min:1'],
             'force'         => ['nullable', 'boolean'],
+        ], [
+            'needed_date.required_if'    => 'Tanggal Dibutuhkan wajib diisi.',
+            'needed_date.date'           => 'Format Tanggal Dibutuhkan tidak valid.',
+            'needed_date.after_or_equal' => 'Tanggal Dibutuhkan tidak boleh sebelum hari ini.',
         ]);
 
         $this->validateMaxRequest($validator, $request->input('items', []));
@@ -102,7 +111,6 @@ class RequestController extends Controller
         $isDraft = $validated['action'] === 'draft';
         $force   = $request->boolean('force');
 
-        // Kalau langsung mau submit (bukan simpan draft), cek duplikasi & stok dulu.
         if (! $isDraft && ! $force) {
             $itemIds = collect($validated['items'])->pluck('item_id');
             $duplicateItems = $this->findDuplicateItemsFor($itemIds, $user->id);
@@ -159,7 +167,6 @@ class RequestController extends Controller
                 ]);
             }
 
-            // Create approval chain if submitted
             if (! $isDraft) {
                 $this->svc->createApprovalChain($atk);
                 if ($user) {
@@ -175,37 +182,42 @@ class RequestController extends Controller
 
     /**
      * Show a single request.
+     * Hanya pemilik atau user dengan izin request.view-all yang boleh melihat.
      */
-    public function show(ATKRequest $atk): Response
-{
-    $atk->load([
-        'department',
-        'requestedBy',
-        'items.item.unit',
-        'items.item.category',
-        'approvals.approver',
-        'pickupSchedule',
-    ]);
+    public function show(Request $request, ATKRequest $atk): Response
+    {
+        $this->ensureOwnerOrViewAll($request->user(), $atk);
 
-    $fulfillmentCheck = $atk->fulfillment_status === 'awaiting_confirmation'
-        ? $this->fulfillmentSvc->checkAvailability($atk)
-        : null;
+        $atk->load([
+            'department',
+            'requestedBy',
+            'items.item.unit',
+            'items.item.category',
+            'approvals.approver',
+            'pickupSchedule',
+        ]);
 
-    $payload = $atk->toArray();
-    $payload['requestedBy']    = $atk->requestedBy;
-    $payload['pickupSchedule'] = $atk->pickupSchedule;
+        $fulfillmentCheck = $atk->fulfillment_status === 'awaiting_confirmation'
+            ? $this->fulfillmentSvc->checkAvailability($atk)
+            : null;
 
-    return Inertia::render('Requests/Show', [
-        'request'          => $payload,
-        'fulfillmentCheck' => $fulfillmentCheck,
-    ]);
-}
+        $payload = $atk->toArray();
+        $payload['requestedBy']    = $atk->requestedBy;
+        $payload['pickupSchedule'] = $atk->pickupSchedule;
+
+        return Inertia::render('Requests/Show', [
+            'request'          => $payload,
+            'fulfillmentCheck' => $fulfillmentCheck,
+        ]);
+    }
 
     /**
-     * Show the edit form (draft only).
+     * Show the edit form (draft only, pemilik saja).
      */
-    public function edit(ATKRequest $atk): Response
+    public function edit(Request $request, ATKRequest $atk): Response
     {
+        $this->ensureOwner($request->user(), $atk);
+
         abort_unless($atk->status === 'draft', 403, 'Hanya draft yang bisa diedit.');
 
         $atk->load('items.item.unit', 'items.item.category');
@@ -213,19 +225,22 @@ class RequestController extends Controller
         return Inertia::render('Requests/Edit', [
             'request'     => $atk,
             'departments' => MasterDepartment::active()->orderBy('name')->get(['id', 'name']),
-            'items'       => MasterItem::active()
+            'items' => MasterItem::active()
                 ->with(['category', 'unit'])
-                ->selectRaw('master_items.*, (SELECT SUM(quantity - reserved_quantity) FROM inventory_stocks WHERE item_id = master_items.id) as available_stock')
+                ->withSum('stocks as total_stock', 'quantity')
+                ->withSum('stocks as reserved_stock', 'reserved_quantity')
                 ->orderBy('name')
                 ->get(),
         ]);
     }
 
     /**
-     * Update a draft request.
+     * Update a draft request (pemilik saja).
      */
     public function update(Request $request, ATKRequest $atk): RedirectResponse
     {
+        $this->ensureOwner($request->user(), $atk);
+
         abort_unless($atk->status === 'draft', 403);
 
         $validator = validator($request->all(), [
@@ -256,10 +271,8 @@ class RequestController extends Controller
 
             $incomingItemIds = collect($validated['items'])->pluck('item_id');
 
-            // Hapus barang yang sudah dihapus dari form
             $atk->items()->whereNotIn('item_id', $incomingItemIds)->delete();
 
-            // Update qty barang yang sudah ada, atau buat baru kalau ditambahkan
             foreach ($validated['items'] as $item) {
                 $atk->items()->updateOrCreate(
                     ['item_id' => $item['item_id']],
@@ -272,12 +285,23 @@ class RequestController extends Controller
     }
 
     /**
-     * Submit a draft. Cek duplikasi dulu sebelum benar-benar submit.
+     * Submit a draft (pemilik saja). Cek duplikasi dulu sebelum benar-benar submit.
      */
     public function submit(Request $request, ATKRequest $atk): RedirectResponse
     {
+        $this->ensureOwner($request->user(), $atk);
+
         abort_unless($atk->status === 'draft', 403, 'Hanya draft yang bisa diajukan.');
         abort_unless($atk->items()->exists(), 422, 'Permintaan harus memiliki minimal 1 barang.');
+
+        // Tanggal Dibutuhkan wajib diisi sebelum diajukan (draft boleh tersimpan tanpa tanggal).
+        if (empty($atk->needed_date)) {
+            return back()->with('error', 'Tanggal Dibutuhkan wajib diisi sebelum permintaan diajukan. Edit draft terlebih dahulu.');
+        }
+
+        if (Carbon::parse($atk->needed_date)->startOfDay()->lt(today())) {
+            return back()->with('error', 'Tanggal Dibutuhkan tidak boleh sebelum hari ini. Edit draft terlebih dahulu.');
+        }
 
         $force = $request->boolean('force');
         $itemIds = $atk->items()->pluck('item_id');
@@ -306,7 +330,8 @@ class RequestController extends Controller
 
     /**
      * Cari nama barang dari daftar item_id yang pernah diminta user yang sama
-     * dalam 7 hari kerja terakhir, lewat request lain (opsional exclude 1 request tertentu)
+     * dalam N hari kerja terakhir (N diatur lewat Pengaturan > Umum, default 7),
+     * lewat request lain (opsional exclude 1 request tertentu)
      * yang statusnya bukan draft/cancelled/rejected.
      */
     private function findDuplicateItemsFor($itemIds, int $userId, ?int $excludeRequestId = null)
@@ -315,7 +340,8 @@ class RequestController extends Controller
             return collect();
         }
 
-        $windowStart = now()->subWeekdays(7);
+        $windowDays  = (int) Setting::get('duplicate_window_days', 'general', 7);
+        $windowStart = now()->subWeekdays($windowDays);
 
         return DB::table('request_items')
             ->join('requests', 'request_items.request_id', '=', 'requests.id')
@@ -332,9 +358,7 @@ class RequestController extends Controller
 
     /**
      * Tambahkan error validasi kalau ada item yang quantity_requested-nya
-     * melebihi max_request item tersebut. min_request tidak dipakai —
-     * batas minimum yang berlaku untuk semua item cukup 1 (lihat rule
-     * 'items.*.quantity_requested' => min:1).
+     * melebihi max_request item tersebut.
      */
     private function validateMaxRequest($validator, array $items): void
     {
@@ -354,10 +378,11 @@ class RequestController extends Controller
                 $max    = $maxRequestByItemId->get($itemId);
 
                 if ($itemId && $qty !== null && $max !== null && $qty > $max) {
-                    $item = MasterItem::find($itemId);
+                    $item = MasterItem::with('unit')->find($itemId);
+                    $unit = $item?->unit?->symbol ?? $item?->unit?->name ?? '';
                     $validator->errors()->add(
                         "items.{$index}.quantity_requested",
-                        "Maksimal permintaan untuk \"{$item?->name}\" adalah {$max} pcs."
+                        trim("Maksimal permintaan untuk \"{$item?->name}\" adalah {$max} {$unit}") . '.'
                     );
                 }
             }
@@ -389,13 +414,24 @@ class RequestController extends Controller
     }
 
     /**
-     * Cancel a request.
+     * Cancel a request (pemilik saja). Kalau yang dibatalkan statusnya sudah 'submitted'
+     * (bukan draft), beri tahu Admin Gudang — bisa saja mereka sudah mulai
+     * memproses/menunggu permintaan ini.
      */
-    public function cancel(ATKRequest $atk): RedirectResponse
+    public function cancel(Request $request, ATKRequest $atk): RedirectResponse
     {
+        $this->ensureOwner($request->user(), $atk);
+
         abort_unless(in_array($atk->status, ['draft', 'submitted']), 403);
 
+        $wasSubmitted = $atk->status === 'submitted';
+
         $atk->update(['status' => 'cancelled']);
+
+        if ($wasSubmitted) {
+            $admins = User::role('Admin')->get();
+            Notification::send($admins, new RequestCancelled($atk, 'Dibatalkan oleh pemohon.'));
+        }
 
         return redirect()->route('requests.show', $atk->uuid)->with('success', 'Permintaan dibatalkan.');
     }
@@ -404,38 +440,33 @@ class RequestController extends Controller
      * Tampilkan halaman Rekomendasi Reorder.
      */
     public function reorderIndex(Request $request): Response
-{
-    $items = MasterItem::active()
-        ->with(['category', 'unit'])
-        ->selectRaw('master_items.*, (SELECT COALESCE(SUM(quantity - reserved_quantity), 0) FROM inventory_stocks WHERE item_id = master_items.id) as available_stock')
-        ->get()
-        ->filter(function ($item) {
-            return $item->available_stock <= $item->min_stock;
-        });
+    {
+        $items = MasterItem::active()
+            ->with(['category', 'unit'])
+            ->withSum('stocks as total_stock', 'quantity')
+            ->withSum('stocks as reserved_stock', 'reserved_quantity')
+            ->get()
+            ->filter(fn ($item) => $item->available_stock <= $item->min_stock);
 
-    $reorderData = $items->map(function ($item) {
-        $available = $item->available_stock ?? 0;
-        $isCritical = $available <= ($item->min_stock * 0.5);
-        $saranReorder = max(0, ($item->max_stock ?? ($item->min_stock * 2)) - $available);
+        $reorderData = $items->map(function ($item) {
+            $available    = $item->available_stock;
+            $isCritical   = $available <= ($item->min_stock * 0.5);
+            $saranReorder = max(0, $item->effective_max_stock - $available);
 
-        return [
-            'id' => $item->id,
-            'name' => $item->name,
-            'code' => $item->sku ?? $item->code,
-            'unit' => $item->unit->name ?? '',
-            'stock' => $available,
-            'min_stock' => $item->min_stock,
-            'saran' => $saranReorder,
-            'status' => $isCritical ? 'KRITIS' : 'RENDAH',
-        ];
-    })->values();
+            return [
+                'id' => $item->id, 'name' => $item->name, 'code' => $item->sku ?? $item->code,
+                'unit' => $item->unit->name ?? '', 'stock' => $available,
+                'min_stock' => $item->min_stock, 'saran' => $saranReorder,
+                'status' => $isCritical ? 'KRITIS' : 'RENDAH',
+            ];
+        })->values();
 
-    return Inertia::render('Requests/ReorderIndex', [
-        'reorderData' => $reorderData,
-        'totalPerluReorder' => $reorderData->count(),
-        'highlightItemId' => $request->query('highlight') ? (int) $request->query('highlight') : null,
-    ]);
-}
+        return Inertia::render('Requests/ReorderIndex', [
+            'reorderData' => $reorderData,
+            'totalPerluReorder' => $reorderData->count(),
+            'highlightItemId' => $request->query('highlight') ? (int) $request->query('highlight') : null,
+        ]);
+    }
 
     /**
      * Proses buat draft request dari 1 item rekomendasi.
@@ -448,7 +479,7 @@ class RequestController extends Controller
         ]);
 
         $user = $request->user();
-        $gudangDepartmentId = 14; // ID Departemen Gudang dari database
+        $gudangDepartmentId = 14;
 
         DB::transaction(function () use ($validated, $user, $gudangDepartmentId) {
             $atk = ATKRequest::create([
@@ -470,7 +501,7 @@ class RequestController extends Controller
             ]);
         });
 
-        return redirect()->route('requests.index')->with('success', 'Draft request ATK berhasil dibuat dari rekomendasi!');
+        return redirect()->route('requests.reorder')->with('success', 'Draft request ATK berhasil dibuat dari rekomendasi!');
     }
 
     /**
@@ -479,12 +510,13 @@ class RequestController extends Controller
     public function storeAllReorderRequest(Request $request): RedirectResponse
     {
         $user = $request->user();
-        $gudangDepartmentId = 14; // ID Departemen Gudang dari database
+        $gudangDepartmentId = 14;
 
         $items = MasterItem::active()
-            ->selectRaw('master_items.*, (SELECT SUM(quantity - reserved_quantity) FROM inventory_stocks WHERE item_id = master_items.id) as available_stock')
-            ->havingRaw('available_stock <= min_stock')
-            ->get();
+            ->withSum('stocks as total_stock', 'quantity')
+            ->withSum('stocks as reserved_stock', 'reserved_quantity')
+            ->get()
+            ->filter(fn ($item) => $item->available_stock <= $item->min_stock);
 
         if ($items->isEmpty()) {
             return redirect()->back()->with('error', 'Tidak ada item yang perlu direorder.');
@@ -503,8 +535,8 @@ class RequestController extends Controller
             ]);
 
             foreach ($items as $item) {
-                $available = $item->available_stock ?? 0;
-                $saranReorder = max(0, ($item->max_stock ?? ($item->min_stock * 2)) - $available);
+                $available    = $item->available_stock;
+                $saranReorder = max(0, $item->effective_max_stock - $available);
 
                 RequestItem::create([
                     'request_id' => $atk->id,
@@ -515,10 +547,29 @@ class RequestController extends Controller
             }
         });
 
-        return redirect()->route('requests.index')->with('success', 'Semua rekomendasi berhasil diajukan sebagai draft request!');
+        return redirect()->route('requests.reorder')->with('success', 'Semua rekomendasi berhasil diajukan sebagai draft request!');
     }
 
     // ─── Helpers ──────────────────────────────────────────────────────────────
+
+    /**
+     * Hanya pemilik permintaan yang boleh lanjut, selain itu 403.
+     */
+    private function ensureOwner(User $user, ATKRequest $atk): void
+    {
+        abort_unless((int) $atk->requested_by === (int) $user->id, 403);
+    }
+
+    /**
+     * Pemilik permintaan, atau user dengan izin request.view-all, boleh lanjut.
+     */
+    private function ensureOwnerOrViewAll(User $user, ATKRequest $atk): void
+    {
+        abort_unless(
+            (int) $atk->requested_by === (int) $user->id || $user->hasPermissionTo('request.view-all'),
+            403
+        );
+    }
 
     private function generateRequestNumber(): string
     {

@@ -80,7 +80,7 @@ export default function UnitsIndex({ units, filters }) {
                             <tr key={u.id}>
                                 <td><span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded">{u.code}</span></td>
                                 <td className="font-medium text-slate-900">{u.name}</td>
-                                <td className="text-slate-500">{u.symbol ?? 'â€”'}</td>
+                                <td className="text-slate-500">{u.symbol ?? '—'}</td>
                                 <td>{u.is_active !== false ? <span className="badge badge-green">Aktif</span> : <span className="badge badge-slate">Nonaktif</span>}</td>
                                 <td><div className="flex justify-end gap-1">
                                     <button onClick={() => setModal(u)} className="p-1.5 rounded-lg hover:bg-blue-50 text-slate-400 hover:text-blue-600 transition-colors"><Edit2 className="w-4 h-4" /></button>

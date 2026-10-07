@@ -93,7 +93,7 @@ export default function Create({ items, locations }) {
                                 value={data.reason}
                                 onChange={e => setData('reason', e.target.value)}
                                 className={`form-input form-textarea ${errors.reason ? 'form-input-error' : ''}`}
-                                placeholder="e.g. Barang masuk dari pembelian, barang rusak, stock opnameâ€¦"
+                                placeholder="e.g. Barang masuk dari pembelian, barang rusak, stock opname…"
                             />
                             {errors.reason && <p className="form-error">{errors.reason}</p>}
                         </div>
@@ -118,10 +118,10 @@ export default function Create({ items, locations }) {
                                         onChange={e => updateRow(i, 'item_id', e.target.value)}
                                         className={`form-select ${errors[`items.${i}.item_id`] ? 'form-input-error' : ''}`}
                                     >
-                                        <option value="">â€” Pilih barang â€”</option>
+                                        <option value="">— Pilih barang —</option>
                                         {items.map(it => (
                                             <option key={it.id} value={it.id}>
-                                                {it.code} â€” {it.name}
+                                                {it.code} — {it.name}
                                             </option>
                                         ))}
                                     </select>
@@ -133,7 +133,7 @@ export default function Create({ items, locations }) {
                                         onChange={e => updateRow(i, 'location_id', e.target.value)}
                                         className="form-select"
                                     >
-                                        <option value="">â€” Pilih lokasi â€”</option>
+                                        <option value="">— Pilih lokasi —</option>
                                         {locations.map(l => (
                                             <option key={l.id} value={l.id}>{l.name}</option>
                                         ))}

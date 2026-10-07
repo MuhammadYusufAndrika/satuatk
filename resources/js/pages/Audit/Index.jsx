@@ -1,5 +1,5 @@
 ﻿import { useState } from 'react';
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/AppLayout';
 import { Shield, Search, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn, formatDateTime } from '@/utils';
@@ -17,13 +17,31 @@ function eventMeta(event) {
     return EVENT_META[event] ?? { cls: 'badge-slate', label: event ?? 'Aksi' };
 }
 
+// Nama modul yang ramah dibaca untuk subject tertentu.
+const SUBJECT_NAMES = {
+    InventoryAdjustment: 'Penyesuaian Stok',
+    User: 'Pengguna',
+};
+
 function subjectLabel(a) {
     const type = a.subject_type ?? '';
-    const short = type.split('\\').pop()?.replace('Master', '').replace('Inventory', '') ?? '';
+    const base = type.split('\\').pop() ?? '';
+    const short = SUBJECT_NAMES[base] ?? base.replace('Master', '').replace('Inventory', '');
     return short ? `${short} #${a.subject_id ?? ''}` : 'Sistem';
 }
 
-// â”€â”€â”€ Detail Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Link ke halaman sumber (khusus Penyesuaian Stok): buka daftar penyesuaian
+// yang sudah difilter berdasarkan nomor penyesuaian.
+function subjectHref(a) {
+    const base = (a.subject_type ?? '').split('\\').pop();
+    const no = a.properties?.attributes?.no_penyesuaian;
+    if (base === 'InventoryAdjustment' && no) {
+        return route('inventory.adjustment.index', { search: no });
+    }
+    return null;
+}
+
+// ─── Detail Modal ─────────────────────────────────────────────────────────────
 
 function DetailModal({ log, onClose }) {
     const props = log.properties ?? {};
@@ -46,7 +64,7 @@ function DetailModal({ log, onClose }) {
                         </span>
                         <div>
                             <p className="text-sm font-medium text-slate-900">{log.causer?.name ?? 'Sistem'}</p>
-                            <p className="text-xs text-slate-400">{log.causer?.email ?? 'â€”'}</p>
+                            <p className="text-xs text-slate-400">{log.causer?.email ?? '—'}</p>
                         </div>
                         <span className={cn('badge ml-auto', eventMeta(log.event).cls)}>
                             {eventMeta(log.event).label}
@@ -74,7 +92,7 @@ function DetailModal({ log, onClose }) {
                                             <tr key={key}>
                                                 <td className="font-mono text-xs text-slate-500">{key}</td>
                                                 <td className="text-sm">{String(val)}</td>
-                                                {old && <td className="text-sm text-slate-400">{String(old[key] ?? 'â€”')}</td>}
+                                                {old && <td className="text-sm text-slate-400">{String(old[key] ?? '—')}</td>}
                                             </tr>
                                         ))}
                                     </tbody>
@@ -93,7 +111,7 @@ function DetailModal({ log, onClose }) {
     );
 }
 
-// â”€â”€â”€ Main â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function AuditIndex({ logs, filters, users }) {
     const [search, setSearch] = useState(filters?.search ?? '');
@@ -130,7 +148,7 @@ export default function AuditIndex({ logs, filters, users }) {
                                 onChange={e => setSearch(e.target.value)}
                                 onKeyDown={e => e.key === 'Enter' && applyFilters()}
                                 className="form-input pl-9"
-                                placeholder="Cari deskripsi aktivitasâ€¦"
+                                placeholder="Cari deskripsi aktivitas…"
                             />
                         </div>
                     </div>
@@ -175,9 +193,19 @@ export default function AuditIndex({ logs, filters, users }) {
                                         <span className="line-clamp-1">{log.description}</span>
                                     </td>
                                     <td>
-                                        <span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-500">
-                                            {subjectLabel(log)}
-                                        </span>
+                                        {subjectHref(log) ? (
+                                            <Link
+                                                href={subjectHref(log)}
+                                                className="font-mono text-xs bg-blue-50 px-2 py-0.5 rounded text-blue-600 hover:bg-blue-100 hover:underline"
+                                                title="Lihat penyesuaian stok"
+                                            >
+                                                {subjectLabel(log)}
+                                            </Link>
+                                        ) : (
+                                            <span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded text-slate-500">
+                                                {subjectLabel(log)}
+                                            </span>
+                                        )}
                                     </td>
                                     <td>
                                         <span className={cn('badge', em.cls)}>{em.label}</span>
@@ -212,7 +240,7 @@ export default function AuditIndex({ logs, filters, users }) {
             {logs?.last_page > 1 && (
                 <div className="flex items-center justify-between mt-4">
                     <p className="text-sm text-slate-500">
-                        Menampilkan {logs.from}â€“{logs.to} dari {logs.total} catatan
+                        Menampilkan {logs.from}–{logs.to} dari {logs.total} catatan
                     </p>
                     <div className="flex gap-1">
                         {logs.links.map((link, i) => (

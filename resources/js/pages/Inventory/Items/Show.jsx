@@ -23,7 +23,7 @@ export default function ItemShow({ item }) {
             { label: 'Barang', href: route('inventory.index') },
             { label: item.code },
         ]}>
-            <Head title={`${item.code} â€” ${item.name}`} />
+            <Head title={`${item.code} — ${item.name}`} />
 
             {/* Header */}
             <div className="page-header">
@@ -91,27 +91,27 @@ export default function ItemShow({ item }) {
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Kategori</p>
-                                <p className="font-medium text-slate-900">{item.category?.name ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.category?.name ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Satuan</p>
-                                <p className="font-medium text-slate-900">{item.unit?.name ?? 'â€”'} <span className="text-slate-400">({item.unit?.symbol})</span></p>
+                                <p className="font-medium text-slate-900">{item.unit?.name ?? '—'} <span className="text-slate-400">({item.unit?.symbol})</span></p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Supplier</p>
-                                <p className="font-medium text-slate-900">{item.supplier?.name ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.supplier?.name ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Merek</p>
-                                <p className="font-medium text-slate-900 flex items-center gap-1.5"><Layers className="w-3.5 h-3.5 text-slate-400" /> {item.brand ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900 flex items-center gap-1.5"><Layers className="w-3.5 h-3.5 text-slate-400" /> {item.brand ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Model</p>
-                                <p className="font-medium text-slate-900">{item.model ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.model ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Barcode</p>
-                                <p className="font-medium text-slate-900 font-mono flex items-center gap-1.5"><Barcode className="w-3.5 h-3.5 text-slate-400" /> {item.barcode ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900 font-mono flex items-center gap-1.5"><Barcode className="w-3.5 h-3.5 text-slate-400" /> {item.barcode ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Status</p>
@@ -119,7 +119,7 @@ export default function ItemShow({ item }) {
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Stok Maks</p>
-                                <p className="font-medium text-slate-900">{item.max_stock ?? 'â€”'}</p>
+                                <p className="font-medium text-slate-900">{item.max_stock ?? '—'}</p>
                             </div>
                             <div>
                                 <p className="text-slate-400 text-xs mb-0.5">Kondisi Stok</p>
@@ -151,7 +151,7 @@ export default function ItemShow({ item }) {
                                 <tbody>
                                     {item.stocks?.length ? item.stocks.map(st => (
                                         <tr key={st.id}>
-                                            <td className="font-medium text-slate-900">{st.location?.name ?? 'â€”'}</td>
+                                            <td className="font-medium text-slate-900">{st.location?.name ?? '—'}</td>
                                             <td className="text-center font-medium">{st.quantity}</td>
                                             <td className="text-center text-slate-500">{st.reserved_quantity ?? 0}</td>
                                         </tr>

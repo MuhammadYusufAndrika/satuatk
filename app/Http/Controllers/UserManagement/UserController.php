@@ -114,6 +114,10 @@ class UserController extends Controller
 
         $approvalLevel = self::ROLE_LEVELS[$validated['role']];
 
+        // Role lama diambil SEBELUM syncRoles(), karena Spatie Activitylog
+        // hanya mencatat kolom tabel users dan tidak melihat perubahan role.
+        $oldRole = $user->roles()->pluck('name')->sort()->implode(', ');
+
         $user->update([
             'name'           => $validated['name'],
             'email'          => $validated['email'],
@@ -125,6 +129,21 @@ class UserController extends Controller
         ]);
 
         $user->syncRoles([$validated['role']]);
+
+        $newRole = $user->roles()->pluck('name')->sort()->implode(', ');
+
+        // Catat ke Audit Trail hanya kalau role benar-benar berubah.
+        if ($oldRole !== $newRole) {
+            activity()
+                ->performedOn($user)
+                ->causedBy($request->user())
+                ->event('updated')
+                ->withProperties([
+                    'old'        => ['role' => $oldRole !== '' ? $oldRole : null],
+                    'attributes' => ['role' => $newRole !== '' ? $newRole : null],
+                ])
+                ->log("Role {$user->name} diubah dari " . ($oldRole !== '' ? $oldRole : '(tanpa role)') . " menjadi {$newRole}");
+        }
 
         return back()->with('success', "Data {$user->name} berhasil diperbarui.");
     }

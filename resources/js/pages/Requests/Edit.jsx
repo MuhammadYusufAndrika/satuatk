@@ -80,12 +80,12 @@ export default function RequestEdit({ request, departments, items: catalogItems 
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Edit Permintaan ATK</h1>
-                    <p className="page-subtitle">{request.request_number} Â· masih berstatus Draft</p>
+                    <p className="page-subtitle">{request.request_number} · masih berstatus Draft</p>
                 </div>
             </div>
 
             <div className="grid lg:grid-cols-3 gap-6">
-                {/* Left â€” Request Info */}
+                {/* Left — Request Info */}
                 <div className="lg:col-span-1 space-y-5">
                     <div className="card">
                         <div className="card-header">
@@ -135,7 +135,7 @@ export default function RequestEdit({ request, departments, items: catalogItems 
                                                     : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                                             }`}
                                         >
-                                            {cat === 'urgent' ? 'ðŸ”´ Urgen' : 'ðŸ“‹ Reguler'}
+                                            {cat === 'urgent' ? '🔴 Urgen' : '📋 Reguler'}
                                         </button>
                                     ))}
                                 </div>
@@ -179,7 +179,7 @@ export default function RequestEdit({ request, departments, items: catalogItems 
                     </div>
                 </div>
 
-                {/* Right â€” Items */}
+                {/* Right — Items */}
                 <div className="lg:col-span-2 space-y-5">
                     {/* Item search */}
                     <div className="card">
@@ -207,7 +207,7 @@ export default function RequestEdit({ request, departments, items: catalogItems 
                                             >
                                                 <div>
                                                     <p className="text-sm font-medium text-slate-900">{item.name}</p>
-                                                    <p className="text-xs text-slate-400">{item.code} Â· {item.category?.name}</p>
+                                                    <p className="text-xs text-slate-400">{item.code} · {item.category?.name}</p>
                                                 </div>
                                                 <div className="text-right ml-4">
                                                     <p className="text-sm font-semibold text-slate-700">{item.available_stock ?? 0}</p>
@@ -257,7 +257,7 @@ export default function RequestEdit({ request, departments, items: catalogItems 
                                                             type="button"
                                                             onClick={() => updateItemQty(idx, item.quantity_requested - 1)}
                                                             className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700 font-bold transition-colors"
-                                                        >âˆ’</button>
+                                                        >−</button>
                                                         <input
                                                             type="number"
                                                             min="1"
