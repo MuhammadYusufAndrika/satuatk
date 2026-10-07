@@ -2,11 +2,13 @@
 @import "tailwindcss";
 
 @theme {
-    --color-primary-50: #eef2f8;
-    --color-primary-100: #dbe3f0;
-    --color-primary-500: #3a5788;
-    --color-primary-600: #16294c;
+    --color-primary-50: #eef3ff;
+    --color-primary-100: #dbe6ff;
+    --color-primary-500: #2b5cff;
+    --color-primary-600: #2347c5;
     --color-primary-700: #0b1c36;
+    --color-royal: #2b5cff;
+    --color-navy: #0b1c36;
     --color-gold: #b8892b;
     --color-gold-light: #d9a94a;
     --font-sans: 'Inter Tight', ui-sans-serif, system-ui, sans-serif;
@@ -199,3 +201,7 @@ body {
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
 .page-title { font-size: 1.25rem; font-weight: 700; color: #0f172a; }
 .page-subtitle { font-size: 0.875rem; color: #64748b; margin-top: 0.125rem; }
+
+/* ─── Korporat: tanpa glass/gradient warna-warni ─────────────────────────────── */
+.hover-lift { transition: transform 200ms ease, box-shadow 200ms ease; }
+.hover-lift:hover { transform: translateY(-2px); }

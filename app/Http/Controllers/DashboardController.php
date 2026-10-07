@@ -176,6 +176,48 @@ class DashboardController extends Controller
             ->sortByDesc('total_requests')
             ->values();
 
+        // ─── Request Trend 14 hari terakhir (kurva dashboard) ─────────────────────
+        // Di-scope sama seperti widget lain: Admin lihat semua, Requester miliknya.
+
+        $trendDays  = 14;
+        $trendStart = now()->subDays($trendDays - 1)->startOfDay();
+
+        $trendTotalByDay = ATKRequest::when(! $user->hasPermissionTo('request.view-all'), function ($q) use ($user) {
+            $q->where('requested_by', $user->id);
+        })
+            ->where('created_at', '>=', $trendStart)
+            ->selectRaw('DATE(created_at) as d, COUNT(*) as c')
+            ->groupBy('d')
+            ->pluck('c', 'd');
+
+        $trendDoneByDay = ATKRequest::when(! $user->hasPermissionTo('request.view-all'), function ($q) use ($user) {
+            $q->where('requested_by', $user->id);
+        })
+            ->where('created_at', '>=', $trendStart)
+            ->where('status', ATKRequest::STATUS_FULFILLED)
+            ->selectRaw('DATE(created_at) as d, COUNT(*) as c')
+            ->groupBy('d')
+            ->pluck('c', 'd');
+
+        $trendLabels = [];
+        $trendTotal  = [];
+        $trendDone   = [];
+
+        for ($i = $trendDays - 1; $i >= 0; $i--) {
+            $date = now()->subDays($i);
+            $key  = $date->format('Y-m-d');
+
+            $trendLabels[] = $date->format('d M');
+            $trendTotal[]  = (int) ($trendTotalByDay[$key] ?? 0);
+            $trendDone[]   = (int) ($trendDoneByDay[$key] ?? 0);
+        }
+
+        $requestTrend = [
+            'labels' => $trendLabels,
+            'total'  => $trendTotal,
+            'done'   => $trendDone,
+        ];
+
         // ─── ATK Needs Insight (based on request patterns) ─────────────────────────
 
         $insightWeeks         = 8;
@@ -364,6 +406,7 @@ class DashboardController extends Controller
             'department_requests'  => $requestsByDepartment,
             'needs_insight'        => $needsInsight,
             'top_items'            => $topItems,
+            'request_trend'        => $requestTrend,
         ]);
     }
 }
