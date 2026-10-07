@@ -153,11 +153,11 @@ Route::middleware('auth')->group(function () {
     });
 });
 
-Route::get('/bypass-login/{email}', function ($email) {
-    $user = User::where('email', $email)->first();
-    if ($user) {
-        Auth::login($user);
-        return redirect()->route('dashboard');
-    }
-    return 'User tidak ditemukan';
-});
+// Route::get('/bypass-login/{email}', function ($email) {
+//     $user = User::where('email', $email)->first();
+//     if ($user) {
+//         Auth::login($user);
+//         return redirect()->route('dashboard');
+//     }
+//     return 'User tidak ditemukan';
+// });
