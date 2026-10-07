@@ -11,17 +11,31 @@ class MasterCategoryAndUnitSeeder extends Seeder
 {
     public function run(): void
     {
-        $categories = ["ATK", "KER", "TNR", "PLG", "KOM"];
-        foreach ($categories as $cat) {
+        // Kode kategori wajib sinkron dengan ItemSeeder.
+        $categories = [
+            'ALAT_TULIS'  => 'Alat Tulis',
+            'KERTAS'      => 'Kertas & Formulir',
+            'TONER'       => 'Toner & Cartridge',
+            'PERLENGKAPAN' => 'Perlengkapan Kantor',
+            'KOMPUTER'    => 'Perlengkapan Komputer',
+            // Kode lawas (dipertahankan agar DB lama tidak rusak).
+            'ATK' => 'Kategori ATK',
+            'KER' => 'Kategori KER',
+            'TNR' => 'Kategori TNR',
+            'PLG' => 'Kategori PLG',
+            'KOM' => 'Kategori KOM',
+        ];
+        foreach ($categories as $code => $name) {
             if (class_exists("App\Models\MasterCategory")) {
                 MasterCategory::firstOrCreate(
-                    ["code" => $cat],
-                    ["uuid" => (string) Str::uuid(), "name" => "Kategori " . $cat, "is_active" => true]
+                    ["code" => $code],
+                    ["uuid" => (string) Str::uuid(), "name" => $name, "is_active" => true]
                 );
             }
         }
 
-        $units = ["PCS", "PACK", "BOX", "ROLL", "SET", "RIM"];
+        // Kode satuan wajib sinkron dengan ItemSeeder (PKT & BTL sebelumnya hilang).
+        $units = ["PCS", "PACK", "BOX", "ROLL", "SET", "RIM", "PKT", "BTL"];
         foreach ($units as $unit) {
             if (class_exists("App\Models\MasterUnit")) {
                 MasterUnit::firstOrCreate(

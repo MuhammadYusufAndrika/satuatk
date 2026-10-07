@@ -15,6 +15,7 @@ class DatabaseSeeder extends Seeder
             MasterCategoryAndUnitSeeder::class,
             ItemSeeder::class,
             ApprovalRulesSeeder::class,
+            DemoDataSeeder::class,
         ]);
     }
 }

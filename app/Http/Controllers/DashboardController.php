@@ -347,7 +347,7 @@ class DashboardController extends Controller
             }
 
             if ($bestIncrease) {
-                $department = \App\Models\Department::find($bestIncrease['department_id']);
+                $department = \App\Models\MasterDepartment::find($bestIncrease['department_id']);
                 $item       = $stockByItem->get($bestIncrease['item_id']);
 
                 $demandIncrease = [
